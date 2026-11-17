@@ -334,6 +334,14 @@ struct PassportView: View {
         ) {
             content
         }
+        #if DEBUG
+        .task {
+            if DebugSamples.enabled && selection.photos.isEmpty {
+                selection.photos = DebugSamples.photos(1)
+                await runCutout()
+            }
+        }
+        #endif
         .onChange(of: pickerItem) {
             Task { await loadAndCut() }
         }

@@ -356,6 +356,9 @@ struct ConvertView: View {
         ToolScreen(title: "Convert", subtitle: subtitle) {
             content
         }
+        #if DEBUG
+        .task { if DebugSamples.enabled && selection.photos.isEmpty { selection.photos = DebugSamples.photos(3) } }
+        #endif
         .onChange(of: pickerItems) { _, newItems in
             Task { await selection.load(newItems, maxPixel: 4096) }
         }

@@ -22,6 +22,14 @@ struct CollageView: View {
                 pickStep
             }
         }
+        #if DEBUG
+        .task {
+            if DebugSamples.enabled && selection.photos.isEmpty {
+                selection.photos = DebugSamples.photos(4)
+                await prepareFromSelection()
+            }
+        }
+        #endif
         .onChange(of: pickerItems) { _, items in
             Task { await loadPicked(items) }
         }
@@ -374,6 +382,10 @@ struct CollageView: View {
         guard !items.isEmpty else { return }
         notice = nil
         await selection.load(items, maxPixel: 3072)
+        await prepareFromSelection()
+    }
+
+    private func prepareFromSelection() async {
         let fulls: [CGImage] = selection.photos.map { $0.image }
         guard fulls.count >= 2 else {
             notice = fulls.isEmpty

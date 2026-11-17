@@ -1,6 +1,7 @@
 #if DEBUG
 import SwiftUI
 import UIKit
+import ImageIO
 
 /// Debug builds can open a given screen directly, with a generated sample photo, so CI can take screenshots
 /// of every screen without tapping through the app: `xcrun simctl launch <device> com.ecomswift.aperta -apScreen home`.
@@ -11,7 +12,10 @@ enum DebugScreens {
     }
 
     @ViewBuilder
-    static func view(for screen: String) -> some View {
+    static func view(for requested: String) -> some View {
+        let filled = requested.hasSuffix("-filled")
+        let screen = filled ? String(requested.dropLast("-filled".count)) : requested
+        let _ = { DebugSamples.enabled = filled }()
         switch screen {
         case "home": HomeView()
         case "onboarding": OnboardingView().environmentObject(AppState())
@@ -36,15 +40,18 @@ enum DebugScreens {
 
 /// A generated landscape used only for development screenshots.
 enum SamplePhoto {
-    static func make() -> LoadedPhoto {
-        let size = CGSize(width: 1600, height: 1200)
+    static func make(variant: Int = 0) -> LoadedPhoto {
+        let sizes: [CGSize] = [CGSize(width: 1600, height: 1200), CGSize(width: 1200, height: 1600), CGSize(width: 2400, height: 1600), CGSize(width: 1600, height: 1600)]
+        let skies: [[UInt32]] = [[0x1F2A44, 0xC76B5A, 0xF3C58A], [0x0F2B3D, 0x2F8F9D, 0xBDE7D8], [0x2B1B3D, 0xD9567A, 0xFFC38B], [0x1E3A2B, 0x6FA66B, 0xF4E9A8]]
+        let size = sizes[variant % sizes.count]
+        let sky0 = skies[variant % skies.count]
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         let image = UIGraphicsImageRenderer(size: size, format: format).image { context in
             let cg = context.cgContext
             let space = CGColorSpaceCreateDeviceRGB()
             let sky = CGGradient(colorsSpace: space, colors: [
-                UIColor(hex: 0x1F2A44).cgColor, UIColor(hex: 0xC76B5A).cgColor, UIColor(hex: 0xF3C58A).cgColor,
+                UIColor(hex: sky0[0]).cgColor, UIColor(hex: sky0[1]).cgColor, UIColor(hex: sky0[2]).cgColor,
             ] as CFArray, locations: [0, 0.62, 1])!
             cg.drawLinearGradient(sky, start: .zero, end: CGPoint(x: 0, y: size.height * 0.72), options: [])
             let sun = CGGradient(colorsSpace: space, colors: [
@@ -71,8 +78,41 @@ enum SamplePhoto {
             cg.fill(CGRect(x: 612, y: 780, width: 146, height: 320))
         }
         let cg = image.cgImage!
-        let data = image.pngData() ?? Data()
-        return LoadedPhoto(image: cg, originalData: data, properties: [:], name: "Sample")
+        let data = image.jpegData(compressionQuality: 0.92) ?? Data()
+        return LoadedPhoto(image: cg, originalData: data, properties: [:], name: "Sample (variant + 1)")
+    }
+}
+
+/// When a screen name ends in "-filled", tool screens start with generated sample photos so CI can check them with data.
+enum DebugSamples {
+    static var enabled = false
+
+    static func photos(_ count: Int, withMetadata: Bool = false) -> [LoadedPhoto] {
+        (0..<count).map { index in
+            let base = SamplePhoto.make(variant: index)
+            guard withMetadata else { return base }
+            let properties: [String: Any] = [
+                kCGImagePropertyTIFFDictionary as String: [
+                    kCGImagePropertyTIFFMake as String: "Apple",
+                    kCGImagePropertyTIFFModel as String: "iPhone 16 Pro",
+                    kCGImagePropertyTIFFSoftware as String: "18.1",
+                ],
+                kCGImagePropertyExifDictionary as String: [
+                    kCGImagePropertyExifDateTimeOriginal as String: "2026:11:02 18:41:07",
+                    kCGImagePropertyExifFNumber as String: 1.8,
+                    kCGImagePropertyExifISOSpeedRatings as String: [64],
+                    kCGImagePropertyExifExposureTime as String: 0.008,
+                    kCGImagePropertyExifFocalLength as String: 6.9,
+                ],
+                kCGImagePropertyGPSDictionary as String: [
+                    kCGImagePropertyGPSLatitude as String: 51.5007,
+                    kCGImagePropertyGPSLatitudeRef as String: "N",
+                    kCGImagePropertyGPSLongitude as String: 0.1246,
+                    kCGImagePropertyGPSLongitudeRef as String: "W",
+                ],
+            ]
+            return LoadedPhoto(image: base.image, originalData: base.originalData, properties: properties, name: base.name)
+        }
     }
 }
 #endif

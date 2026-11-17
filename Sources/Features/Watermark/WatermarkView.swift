@@ -340,6 +340,9 @@ struct WatermarkView: View {
                 saveSection
             }
         }
+        #if DEBUG
+        .task { if DebugSamples.enabled && selection.photos.isEmpty { selection.photos = DebugSamples.photos(2) } }
+        #endif
         .onChange(of: pickerItems) {
             let items = pickerItems
             Task { await selection.load(items, maxPixel: 4096) }

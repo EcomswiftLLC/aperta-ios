@@ -299,6 +299,14 @@ struct MetadataView: View {
                 emptyState
             }
         }
+        #if DEBUG
+        .task {
+            if DebugSamples.enabled && selection.photos.isEmpty {
+                selection.photos = DebugSamples.photos(1, withMetadata: true)
+                if let photo = selection.photos.first { report = MtdReader.report(for: photo) }
+            }
+        }
+        #endif
         .onChange(of: pickerItem) {
             Task { await loadPhoto() }
         }

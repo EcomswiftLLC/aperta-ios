@@ -63,10 +63,10 @@ jobs:
           APP=$(find build/dd -name Aperta.app -maxdepth 6 | head -1)
           xcrun simctl install "$DEST" "$APP"
           mkdir -p shots
-          for SCREEN in home editor-adjust editor-filters editor-crop editor-text editor-draw editor-cutout collage compress resize convert watermark passport metadata settings; do
+          for SCREEN in home editor-adjust collage collage-filled compress-filled resize-filled convert-filled watermark-filled passport-filled metadata-filled; do
             xcrun simctl terminate "$DEST" com.ecomswift.aperta || true
             xcrun simctl launch "$DEST" com.ecomswift.aperta -apScreen "$SCREEN" || true
-            sleep 6
+            sleep 12
             xcrun simctl io "$DEST" screenshot "shots/$SCREEN.png" || true
           done
           ls shots
