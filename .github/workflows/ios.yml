@@ -63,7 +63,7 @@ jobs:
           APP=$(find build/dd -name Aperta.app -maxdepth 6 | head -1)
           xcrun simctl install "$DEST" "$APP"
           mkdir -p shots
-          for SCREEN in home editor-adjust collage collage-filled compress-filled resize-filled convert-filled watermark-filled passport-filled metadata-filled; do
+          for SCREEN in home editor-adjust collage collage-filled compress-filled resize-filled convert-filled watermark-filled passport-filled metadata-filled paywall settings; do
             xcrun simctl terminate "$DEST" com.ecomswift.aperta || true
             xcrun simctl launch "$DEST" com.ecomswift.aperta -apScreen "$SCREEN" || true
             sleep 12
