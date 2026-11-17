@@ -21,7 +21,7 @@ SLIDES = [
     ("shot-passport", ["ID and passport", "photos at home."], "Plain background, right size, ready to print"),
     ("shot-resize", ["Resize for any", "social network."], "Exact sizes and presets, many photos at once"),
     ("shot-watermark", ["Sign your", "photos."], "Text or logo on up to twenty photos"),
-    ("shot-metadata", ["See what a photo", "tells others."], "Remove location and camera details before sharing"),
+    ("shot-metadata", ["See what a photo", "tells others."], "Review location and camera details, then save a clean copy"),
 ]
 
 
