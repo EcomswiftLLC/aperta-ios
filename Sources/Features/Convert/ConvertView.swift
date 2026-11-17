@@ -263,7 +263,7 @@ private struct CnvPDFShareButton: View {
     let data: Data?
 
     @EnvironmentObject private var exportStore: ExportStore
-    @State private var sheet: ExportSheet?
+    @State private var sheet: ExportPresentation?
     @State private var errorText: String?
 
     var body: some View {

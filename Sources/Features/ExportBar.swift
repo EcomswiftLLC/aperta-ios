@@ -12,7 +12,7 @@ struct ExportBar: View {
 
     @EnvironmentObject private var exportStore: ExportStore
     @State private var status: Status = .idle
-    @State private var sheet: ExportSheet?
+    @State private var sheet: ExportPresentation?
     /// What the person asked for while the paywall was open.
     @State private var pending: PendingAction?
 

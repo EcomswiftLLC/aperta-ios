@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The sheets an export button can show: the choices when no export is available, and the system share sheet.
-enum ExportSheet: Identifiable {
+enum ExportPresentation: Identifiable {
     case paywall
     case share([URL])
 
@@ -14,7 +14,7 @@ enum ExportSheet: Identifiable {
 }
 
 private struct ExportSheetHost: ViewModifier {
-    @Binding var sheet: ExportSheet?
+    @Binding var sheet: ExportPresentation?
     /// Runs after a purchase or restore made an export available, once the paywall is gone.
     let onUnlocked: () -> Void
     /// Reports whether the share sheet really completed (a destination was chosen and finished).
@@ -48,7 +48,7 @@ private struct ExportSheetHost: ViewModifier {
 
 extension View {
     /// Attach once to the view that owns an export button.
-    func exportSheets(_ sheet: Binding<ExportSheet?>, onUnlocked: @escaping () -> Void, onShareFinished: @escaping (Bool) -> Void) -> some View {
+    func exportSheets(_ sheet: Binding<ExportPresentation?>, onUnlocked: @escaping () -> Void, onShareFinished: @escaping (Bool) -> Void) -> some View {
         modifier(ExportSheetHost(sheet: sheet, onUnlocked: onUnlocked, onShareFinished: onShareFinished))
     }
 }
