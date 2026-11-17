@@ -170,9 +170,9 @@ enum RealSamples {
     }
 
     static func photo(_ name: String) -> LoadedPhoto {
-        if let url = folder?.appendingPathComponent("(name).jpg"),
+        if let url = folder?.appendingPathComponent("\(name).jpg"),
            let data = try? Data(contentsOf: url),
-           let loaded = PhotoLoader.load(data: data, maxPixel: 3072, name: name) {
+           let loaded = PhotoLoader.load(data: data, maxPixel: 3072, name: name.replacingOccurrences(of: "_", with: " ").capitalized) {
             return loaded
         }
         return SamplePhoto.make()
