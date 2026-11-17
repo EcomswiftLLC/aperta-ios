@@ -20,6 +20,7 @@ enum DebugScreens {
         case "home": HomeView()
         case "onboarding": OnboardingView().environmentObject(AppState())
         case "settings": SettingsView()
+        case "paywall": ExportPaywallSheet(onUnlocked: {})
         case "editor-adjust": EditorView(photo: SamplePhoto.make(), startTool: .adjust)
         case "editor-filters": EditorView(photo: SamplePhoto.make(), startTool: .filters)
         case "editor-crop": EditorView(photo: SamplePhoto.make(), startTool: .crop)

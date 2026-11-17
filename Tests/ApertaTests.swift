@@ -17,16 +17,6 @@ final class ApertaTests: XCTestCase {
         return image.cgImage!
     }
 
-    func testRewardedPolicyOffersOnlyWithAdAndOutsideGrace() {
-        var policy = RewardedPolicy()
-        let now = Date()
-        XCTAssertFalse(policy.shouldOffer(adReady: false, now: now))
-        XCTAssertTrue(policy.shouldOffer(adReady: true, now: now))
-        policy.didEarnReward(now: now)
-        XCTAssertFalse(policy.shouldOffer(adReady: true, now: now.addingTimeInterval(60)))
-        XCTAssertTrue(policy.shouldOffer(adReady: true, now: now.addingTimeInterval(300)))
-    }
-
     func testDefaultEditKeepsSize() {
         let cg = makeImage(width: 200, height: 100)
         let out = EditPipeline.shared.render(source: CIImage(cgImage: cg), mask: nil, state: EditState())

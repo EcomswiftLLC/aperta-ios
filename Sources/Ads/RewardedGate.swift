@@ -2,39 +2,24 @@ import SwiftUI
 import UIKit
 import GoogleMobileAds
 
-/// Pure rules for the rewarded export gate, so they can be unit tested.
-struct RewardedPolicy: Equatable {
-    /// One watched ad covers every export for this long, so saving and then sharing the same result asks only once.
-    static let graceInterval: TimeInterval = 120
-
-    private(set) var lastReward: Date?
-
-    /// True when the person should be offered an ad before this export. Never when no ad is ready.
-    func shouldOffer(adReady: Bool, now: Date = Date()) -> Bool {
-        guard adReady else { return false }
-        if let lastReward, now.timeIntervalSince(lastReward) < Self.graceInterval { return false }
-        return true
-    }
-
-    mutating func didEarnReward(now: Date = Date()) {
-        lastReward = now
-    }
-}
-
-/// Aperta is free. Saving or sharing a finished photo is paid for by watching one short rewarded ad, which the person
-/// chooses to watch. When no ad is ready (offline, no fill, consent still pending) the export simply goes ahead.
+/// Loads one rewarded ad ahead of time. Aperta offers it on the export paywall as a free way to earn one export:
+/// the person chooses to watch it, and one export is granted only when the ad was watched to the end.
+/// An ad that cannot be shown never unlocks anything (and never blocks the paid options).
 @MainActor
-final class RewardedGate: NSObject, FullScreenContentDelegate {
+final class RewardedGate: NSObject, ObservableObject, FullScreenContentDelegate {
     static let shared = RewardedGate()
+
+    /// True when an ad is loaded and the paywall may offer it.
+    @Published private(set) var isReady = false
 
     private var ad: RewardedAd?
     private var loadedAt: Date?
     private var loading = false
-    private var policy = RewardedPolicy()
     private let maxAge: TimeInterval = 55 * 60
 
     private var earned = false
-    private var proceed: (() -> Void)?
+    private var onEarned: (() -> Void)?
+    private var onFailed: (() -> Void)?
 
     private override init() { super.init() }
 
@@ -45,6 +30,7 @@ final class RewardedGate: NSObject, FullScreenContentDelegate {
 
     /// Call when the app may request ads (after consent and SDK start), and again after each ad.
     func preloadIfPossible() {
+        isReady = AdsManager.shared.adsReady && hasUsableAd
         guard AdsManager.shared.adsReady, !loading, !hasUsableAd else { return }
         guard let unitID = AdsConfiguration.rewardedUnitID else { return }
         loading = true
@@ -56,43 +42,28 @@ final class RewardedGate: NSObject, FullScreenContentDelegate {
                 self.ad = loaded
                 self.loadedAt = Date()
                 self.loading = false
+                self.isReady = true
             } catch {
                 AdsLog.logger.info("Rewarded ad failed to load: \(error.localizedDescription, privacy: .public)")
                 self?.loading = false
+                self?.isReady = false
             }
         }
     }
 
-    /// Runs `action` right away when no ad is needed, otherwise asks first. The action runs only after the ad was
-    /// watched to the end, or when the ad could not be shown. "Not now" runs nothing.
-    func requestExport(_ action: @escaping () -> Void) {
-        guard AdsManager.shared.adsReady,
-              policy.shouldOffer(adReady: hasUsableAd),
-              let presenter = AdsPresenter.topViewController() else {
-            action()
+    /// Shows the ad. `onEarned` runs only after the ad was watched to the end. `onFailed` runs when no ad could be
+    /// shown. Closing the ad early runs neither.
+    func show(onEarned: @escaping () -> Void, onFailed: @escaping () -> Void) {
+        guard hasUsableAd, let ad, let presenter = AdsPresenter.topViewController() else {
+            onFailed()
             preloadIfPossible()
             return
         }
-        let alert = UIAlertController(
-            title: "Watch a short ad to export",
-            message: "Aperta is free because of ads. Watch one ad to save or share your photo.",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "Not now", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Watch ad", style: .default) { [weak self] _ in
-            self?.show(then: action)
-        })
-        presenter.present(alert, animated: true)
-    }
-
-    private func show(then action: @escaping () -> Void) {
-        guard let ad, let presenter = AdsPresenter.topViewController() else {
-            action()
-            return
-        }
         self.ad = nil
+        isReady = false
         earned = false
-        proceed = action
+        self.onEarned = onEarned
+        self.onFailed = onFailed
         ad.present(from: presenter) { [weak self] in
             self?.earned = true
         }
@@ -101,21 +72,20 @@ final class RewardedGate: NSObject, FullScreenContentDelegate {
     // MARK: FullScreenContentDelegate
 
     func adDidDismissFullScreenContent(_ ad: FullScreenPresentingAd) {
-        let action = proceed
-        proceed = nil
-        if earned {
-            policy.didEarnReward()
-            earned = false
-            action?()
-        }
+        let action = onEarned
+        let didEarn = earned
+        onEarned = nil
+        onFailed = nil
+        earned = false
+        if didEarn { action?() }
         preloadIfPossible()
     }
 
     func ad(_ ad: FullScreenPresentingAd, didFailToPresentFullScreenContentWithError error: Error) {
         AdsLog.logger.info("Rewarded ad failed to present: \(error.localizedDescription, privacy: .public)")
-        // The ad is what failed, not the person: let the export through.
-        let action = proceed
-        proceed = nil
+        let action = onFailed
+        onEarned = nil
+        onFailed = nil
         earned = false
         action?()
         preloadIfPossible()
