@@ -297,9 +297,16 @@ enum LibrarySaver {
 
 struct ShareSheet: UIViewControllerRepresentable {
     let urls: [URL]
+    /// Called when the share sheet ends. `true` only when a destination really finished (shared, saved, copied).
+    var onFinish: ((Bool) -> Void)? = nil
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: urls, applicationActivities: nil)
+        let controller = UIActivityViewController(activityItems: urls, applicationActivities: nil)
+        let finish = onFinish
+        controller.completionWithItemsHandler = { _, completed, _, _ in
+            finish?(completed)
+        }
+        return controller
     }
 
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}

@@ -258,17 +258,18 @@ private final class CnvModel: ObservableObject {
 // MARK: - PDF share button
 
 /// PDF files cannot go to the photo library, so they are shared (Files, Mail, Messages, printers ...).
+/// Sharing uses one export, like every other save or share (see `ExportBar`).
 private struct CnvPDFShareButton: View {
     let data: Data?
 
-    @State private var shareURL: URL?
-    @State private var showShare: Bool = false
+    @EnvironmentObject private var exportStore: ExportStore
+    @State private var sheet: ExportSheet?
     @State private var errorText: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: AP.Space.s) {
             Button {
-                share()
+                request()
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "square.and.arrow.up")
@@ -291,26 +292,34 @@ private struct CnvPDFShareButton: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .sheet(isPresented: $showShare) {
-            if let shareURL {
-                ShareSheet(urls: [shareURL])
-                    .presentationDetents([.medium, .large])
-                    .ignoresSafeArea()
-            }
+        .exportSheets($sheet, onUnlocked: share, onShareFinished: shareFinished)
+    }
+
+    @MainActor
+    private func request() {
+        guard exportStore.access.isOpen else {
+            sheet = .paywall
+            return
         }
+        share()
+    }
+
+    @MainActor
+    private func shareFinished(_ completed: Bool) {
+        exportStore.settle(completed ? .completed : .cancelled)
+        if completed { InterstitialController.shared.exportFinished() }
     }
 
     @MainActor
     private func share() {
+        guard exportStore.access.isOpen else { return }
         guard let data else { return }
         let stamp = Int(Date().timeIntervalSince1970 * 1000) % 100_000_000
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Aperta-photos-\(stamp).pdf")
         do {
             try data.write(to: url, options: .atomic)
             errorText = nil
-            shareURL = url
-            showShare = true
-            InterstitialController.shared.exportFinished()
+            sheet = .share([url])
         } catch {
             errorText = "Could not prepare the PDF. Try again."
         }
