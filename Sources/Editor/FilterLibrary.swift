@@ -73,7 +73,7 @@ enum FilterLibrary {
         case .amber: return run(image, Recipe(saturation: 1.1, contrast: 1.04, warmth: 0.75, fade: 0.15))
         case .polar: return run(image, Recipe(saturation: 0.9, contrast: 1.02, brightness: 0.05, warmth: -0.55, fade: 0.08))
         case .vivid: return run(image, Recipe(saturation: 1.45, contrast: 1.1, curve: 0.35))
-        case .dusk: return run(image, Recipe(saturation: 1.05, contrast: 1.08, warmth: 0.25, tealOrange: 0.5, fade: 0.1, vignette: 0.35))
+        case .dusk: return run(image, Recipe(saturation: 1.05, contrast: 1.08, warmth: 0.25, fade: 0.1, tealOrange: 0.5, vignette: 0.35))
         case .instant: return image.applyingFilter("CIPhotoEffectInstant")
         case .chrome: return image.applyingFilter("CIPhotoEffectChrome")
         case .noir: return image.applyingFilter("CIPhotoEffectNoir")
