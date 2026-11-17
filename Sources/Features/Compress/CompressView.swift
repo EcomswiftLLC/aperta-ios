@@ -182,7 +182,7 @@ struct CompressView: View {
             content
         }
         #if DEBUG
-        .task { if DebugSamples.enabled && selection.photos.isEmpty { selection.photos = DebugSamples.photos(3) } }
+        .task { if DebugSamples.enabled && selection.photos.isEmpty { selection.photos = DebugSamples.photos(3); quality = 45 } }
         #endif
         .onChange(of: pickerItems) { _, newItems in
             Task { await selection.load(newItems, maxPixel: 4096) }

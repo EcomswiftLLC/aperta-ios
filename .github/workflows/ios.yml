@@ -66,6 +66,7 @@ jobs:
           CONTAINER=$(xcrun simctl get_app_container "$DEST" com.ecomswift.aperta data)
           mkdir -p "$CONTAINER/Documents/samples"
           cp design/photos/*.jpg "$CONTAINER/Documents/samples/"
+          cp design/masks/*.png "$CONTAINER/Documents/samples/"
           for SCREEN in home editor-adjust shot-home shot-filters shot-adjust shot-crop shot-text shot-cutout shot-collage shot-resize shot-compress shot-passport shot-watermark shot-metadata settings; do
             xcrun simctl terminate "$DEST" com.ecomswift.aperta || true
             xcrun simctl launch "$DEST" com.ecomswift.aperta -apScreen "$SCREEN" || true

@@ -17,6 +17,7 @@ enum DebugScreens {
         let screen = requested.hasSuffix("-filled") ? String(requested.dropLast("-filled".count)) : requested
         let _ = { DebugSamples.enabled = filled }()
         let _ = { DebugSamples.portrait = screen == "shot-passport" }()
+        let _ = { if screen == "shot-cutout" { DebugMasks.use("portrait_man") } else if screen == "shot-passport" { DebugMasks.use("portrait_woman") } }()
         switch screen {
         case "home": HomeView()
         case "onboarding": OnboardingView().environmentObject(AppState())
@@ -155,6 +156,19 @@ enum DebugSamples {
             ]
             return LoadedPhoto(image: base.image, originalData: base.originalData, properties: properties, name: base.name)
         }
+    }
+}
+
+/// Offline subject masks for the sample portraits (design/masks), used only when Vision cannot run in the CI simulator.
+enum DebugMasks {
+    static var current: CGImage?
+
+    static func use(_ name: String) {
+        guard let url = RealSamples.folder?.appendingPathComponent("\(name).png"),
+              let data = try? Data(contentsOf: url),
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return }
+        current = image
     }
 }
 

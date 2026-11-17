@@ -30,7 +30,7 @@ enum CutoutService {
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         do {
             try handler.perform([request])
-            guard let result = request.results?.first, !result.allInstances.isEmpty else { return nil }
+            guard let result = request.results?.first, !result.allInstances.isEmpty else { return debugCutout(image) }
             let buffer = try result.generateMaskedImage(
                 ofInstances: result.allInstances,
                 from: handler,
@@ -39,7 +39,7 @@ enum CutoutService {
             let ci = CIImage(cvPixelBuffer: buffer)
             return ciContext.createCGImage(ci, from: ci.extent)
         } catch {
-            return nil
+            return debugCutout(image)
         }
     }
 
@@ -48,11 +48,34 @@ enum CutoutService {
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         do {
             try handler.perform([request])
-            guard let result = request.results?.first, !result.allInstances.isEmpty else { return nil }
+            guard let result = request.results?.first, !result.allInstances.isEmpty else { return debugMask(image) }
             let buffer = try result.generateScaledMaskForImage(forInstances: result.allInstances, from: handler)
             return CIImage(cvPixelBuffer: buffer)
         } catch {
-            return nil
+            return debugMask(image)
         }
     }
+
+    #if DEBUG
+    /// The CI simulator has no Neural Engine, so Vision cannot find a subject there. For store screenshots only, a mask made offline
+    /// for the sample portrait stands in. Release builds do not contain this code.
+    private static func debugMask(_ image: CGImage) -> CIImage? {
+        guard let mask = DebugMasks.current else { return nil }
+        let ci = CIImage(cgImage: mask)
+        let scaled = ci.transformed(by: CGAffineTransform(
+            scaleX: CGFloat(image.width) / ci.extent.width, y: CGFloat(image.height) / ci.extent.height))
+        return scaled
+    }
+
+    private static func debugCutout(_ image: CGImage) -> CGImage? {
+        guard let mask = debugMask(image) else { return nil }
+        let source = CIImage(cgImage: image)
+        let clear = CIImage(color: .clear).cropped(to: source.extent)
+        let out = source.applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: clear, kCIInputMaskImageKey: mask])
+        return ciContext.createCGImage(out, from: source.extent)
+    }
+    #else
+    private static func debugMask(_ image: CGImage) -> CIImage? { nil }
+    private static func debugCutout(_ image: CGImage) -> CGImage? { nil }
+    #endif
 }
