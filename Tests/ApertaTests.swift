@@ -17,15 +17,14 @@ final class ApertaTests: XCTestCase {
         return image.cgImage!
     }
 
-    func testInterstitialPolicyWaitsForSecondExport() {
-        var policy = InterstitialPolicy()
+    func testRewardedPolicyOffersOnlyWithAdAndOutsideGrace() {
+        var policy = RewardedPolicy()
         let now = Date()
-        XCTAssertFalse(policy.exportFinished(now: now))
-        XCTAssertTrue(policy.exportFinished(now: now))
-        policy.didShow(now: now)
-        XCTAssertFalse(policy.exportFinished(now: now.addingTimeInterval(10)))
-        XCTAssertFalse(policy.exportFinished(now: now.addingTimeInterval(20)))
-        XCTAssertTrue(policy.exportFinished(now: now.addingTimeInterval(400)))
+        XCTAssertFalse(policy.shouldOffer(adReady: false, now: now))
+        XCTAssertTrue(policy.shouldOffer(adReady: true, now: now))
+        policy.didEarnReward(now: now)
+        XCTAssertFalse(policy.shouldOffer(adReady: true, now: now.addingTimeInterval(60)))
+        XCTAssertTrue(policy.shouldOffer(adReady: true, now: now.addingTimeInterval(300)))
     }
 
     func testDefaultEditKeepsSize() {

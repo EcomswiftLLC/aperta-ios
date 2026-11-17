@@ -12,10 +12,10 @@ enum AdsLog {
 /// Reads ad configuration from Info.plist (filled from Config/*.xcconfig). Ids are never hardcoded in Swift.
 enum AdsConfiguration {
     static let bannerKey = "APBannerAdUnitID"
-    static let interstitialKey = "APInterstitialAdUnitID"
+    static let rewardedKey = "APRewardedAdUnitID"
 
     static var bannerUnitID: String? { unitID(forKey: bannerKey) }
-    static var interstitialUnitID: String? { unitID(forKey: interstitialKey) }
+    static var rewardedUnitID: String? { unitID(forKey: rewardedKey) }
 
     static func unitID(forKey key: String, bundle: Bundle = .main) -> String? {
         normalizedUnitID(bundle.object(forInfoDictionaryKey: key))

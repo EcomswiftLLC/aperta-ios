@@ -4,7 +4,6 @@ import SwiftUI
 struct ApertaApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var ads = AdsManager.shared
-    @StateObject private var exportStore = ExportStore.makeForLaunch()
 
     init() {
         APAppearance.configure()
@@ -15,7 +14,6 @@ struct ApertaApp: App {
             RootView()
                 .environmentObject(appState)
                 .environmentObject(ads)
-                .environmentObject(exportStore)
                 .preferredColorScheme(.dark)
                 .tint(AP.Palette.brass)
         }
@@ -37,7 +35,6 @@ final class AppState: ObservableObject {
 struct RootView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var ads: AdsManager
-    @EnvironmentObject private var exportStore: ExportStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var adsStarted = false
 
@@ -54,10 +51,9 @@ struct RootView: View {
             #endif
         }
         .apScreen()
-        .task { exportStore.start() }
         .task(id: appState.hasOnboarded) { await startAdsWhenReady() }
         .onChange(of: ads.adsReady) { _, ready in
-            if ready { InterstitialController.shared.preloadIfPossible() }
+            if ready { RewardedGate.shared.preloadIfPossible() }
         }
     }
 
