@@ -86,7 +86,7 @@ enum WmkInk: String, CaseIterable, Identifiable {
 /// Everything that decides how the watermark looks. Shared by the preview and the export so both match.
 struct WmkConfig: Equatable {
     var source: WmkSource = .text
-    var text: String = "\u{00A9} Your name"
+    var text: String = ""
     var font: WmkFont = .serif
     var color: UIColor = UIColor.white
     var logo: CGImage? = nil

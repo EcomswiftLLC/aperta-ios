@@ -79,7 +79,7 @@ enum SamplePhoto {
         }
         let cg = image.cgImage!
         let data = image.jpegData(compressionQuality: 0.92) ?? Data()
-        return LoadedPhoto(image: cg, originalData: data, properties: [:], name: "Sample (variant + 1)")
+        return LoadedPhoto(image: cg, originalData: data, properties: [:], name: "Sample \(variant + 1)")
     }
 }
 
