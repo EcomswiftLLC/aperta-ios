@@ -79,7 +79,7 @@ struct EditorView: View {
             }
             .accessibilityLabel(Text("Export"))
         }
-        .padding(.horizontal, AP.Space.s)
+        .padding(.horizontal, AP.Space.m)
         .frame(height: 52)
     }
 

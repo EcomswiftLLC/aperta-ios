@@ -125,10 +125,10 @@ struct HomeView: View {
 
     private var hero: some View {
         ZStack(alignment: .topTrailing) {
-            ApertureMark(lineWidth: 1, color: AP.Palette.brass.opacity(0.35), openness: 0.22)
+            ApertureMark(lineWidth: 1, color: AP.Palette.brass.opacity(0.22), openness: 0.22)
                 .frame(width: 230, height: 230)
                 .rotationEffect(.degrees(spun ? 0 : -70))
-                .offset(x: 70, y: -30)
+                .offset(x: 80, y: -60)
                 .clipped()
             VStack(alignment: .leading, spacing: AP.Space.m) {
                 Text("Your photos,\nfinished.")

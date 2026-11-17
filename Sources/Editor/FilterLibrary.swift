@@ -58,9 +58,9 @@ enum FilterLibrary {
         switch id {
         case .original: return image
         case .aperta: return run(image, Recipe(saturation: 1.10, contrast: 1.06, brightness: 0.01, curve: 0.5))
-        case .ivory: return run(image, Recipe(saturation: 0.88, contrast: 0.96, brightness: 0.05, warmth: 0.18, fade: 0.18))
+        case .ivory: return run(image, Recipe(saturation: 0.95, contrast: 0.98, brightness: 0.04, warmth: 0.18, fade: 0.1))
         case .gilt: return run(image, Recipe(saturation: 1.15, contrast: 1.05, brightness: 0.02, warmth: 0.55, curve: 0.3, vignette: 0.25))
-        case .rose: return run(image, Recipe(saturation: 1.0, contrast: 0.97, brightness: 0.03, warmth: 0.12, tint: 0.35, fade: 0.14))
+        case .rose: return run(image, Recipe(saturation: 1.0, contrast: 0.97, brightness: 0.03, warmth: 0.12, tint: 0.35, fade: 0.08))
         case .verdant: return run(image, Recipe(saturation: 1.28, contrast: 1.1, warmth: -0.08, tint: -0.2, curve: 0.4))
         case .cinema: return run(image, Recipe(saturation: 1.05, contrast: 1.12, tealOrange: 0.85, curve: 0.5, vignette: 0.3))
         case .nocturne: return run(image, Recipe(saturation: 0.92, contrast: 1.16, brightness: -0.05, warmth: -0.4, curve: 0.6, vignette: 0.4))
