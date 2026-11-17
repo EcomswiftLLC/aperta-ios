@@ -63,10 +63,14 @@ jobs:
           APP=$(find build/dd -name Aperta.app -maxdepth 6 | head -1)
           xcrun simctl install "$DEST" "$APP"
           mkdir -p shots
-          for SCREEN in home editor-adjust collage collage-filled compress-filled resize-filled convert-filled watermark-filled passport-filled metadata-filled; do
+          CONTAINER=$(xcrun simctl get_app_container "$DEST" com.ecomswift.aperta data)
+          mkdir -p "$CONTAINER/Documents/samples"
+          cp design/photos/*.jpg "$CONTAINER/Documents/samples/"
+          for SCREEN in home editor-adjust shot-home shot-filters shot-adjust shot-crop shot-text shot-cutout shot-collage shot-resize shot-compress shot-passport shot-watermark shot-metadata settings; do
             xcrun simctl terminate "$DEST" com.ecomswift.aperta || true
             xcrun simctl launch "$DEST" com.ecomswift.aperta -apScreen "$SCREEN" || true
-            sleep 12
+            case "$SCREEN" in shot-cutout|shot-passport) WAIT=30 ;; *) WAIT=14 ;; esac
+            sleep $WAIT
             xcrun simctl io "$DEST" screenshot "shots/$SCREEN.png" || true
           done
           ls shots
