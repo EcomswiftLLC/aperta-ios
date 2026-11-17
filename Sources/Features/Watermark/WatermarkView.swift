@@ -341,7 +341,7 @@ struct WatermarkView: View {
             }
         }
         #if DEBUG
-        .task { if DebugSamples.enabled && selection.photos.isEmpty { selection.photos = DebugSamples.photos(2) } }
+        .task { if DebugSamples.enabled && selection.photos.isEmpty { selection.photos = DebugSamples.photos(2); config.text = "© Aperta Studio" } }
         #endif
         .onChange(of: pickerItems) {
             let items = pickerItems

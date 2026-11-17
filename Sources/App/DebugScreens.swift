@@ -13,9 +13,10 @@ enum DebugScreens {
 
     @ViewBuilder
     static func view(for requested: String) -> some View {
-        let filled = requested.hasSuffix("-filled")
-        let screen = filled ? String(requested.dropLast("-filled".count)) : requested
+        let filled = requested.hasSuffix("-filled") || requested.hasPrefix("shot-")
+        let screen = requested.hasSuffix("-filled") ? String(requested.dropLast("-filled".count)) : requested
         let _ = { DebugSamples.enabled = filled }()
+        let _ = { DebugSamples.portrait = screen == "shot-passport" }()
         switch screen {
         case "home": HomeView()
         case "onboarding": OnboardingView().environmentObject(AppState())
@@ -34,6 +35,45 @@ enum DebugScreens {
         case "watermark": NavigationStack { WatermarkView() }
         case "passport": NavigationStack { PassportView() }
         case "metadata": NavigationStack { MetadataView() }
+        case "shot-home": HomeView()
+        case "shot-filters": EditorView(photo: RealSamples.photo("landscape_mountain"), startTool: .filters) { model in
+            model.commit { $0.filter = .gilt; $0.filterIntensity = 85 }
+        }
+        case "shot-adjust": EditorView(photo: RealSamples.photo("travel_beach"), startTool: .adjust) { model in
+            model.commit { state in
+                state.adjust.exposure = 12; state.adjust.contrast = 14; state.adjust.saturation = 22
+                state.adjust.warmth = 18; state.adjust.clarity = 20; state.adjust.vignette = 14
+            }
+        }
+        case "shot-crop": EditorView(photo: RealSamples.photo("city_street"), startTool: .crop) { model in
+            model.commit { state in
+                state.crop.ratio = .portrait45
+                state.crop.rect = model.fittedCropRect(ratio: .portrait45, crop: state.crop)
+            }
+        }
+        case "shot-text": EditorView(photo: RealSamples.photo("flowers"), startTool: .text) { model in
+            model.commit { $0.filter = .verdant; $0.filterIntensity = 60 }
+            model.addText()
+            if let id = model.selectedOverlay {
+                model.updateOverlay(id) { overlay in
+                    var style = TextStyle()
+                    style.text = "Golden hour"
+                    style.size = 0.12
+                    overlay.content = .text(style)
+                    overlay.center = CGPoint(x: 0.5, y: 0.78)
+                }
+            }
+        }
+        case "shot-cutout": EditorView(photo: RealSamples.photo("portrait_man"), startTool: .cutout) { model in
+            await model.makeCutout()
+            model.commit { $0.background.mode = .color; $0.background.colorHex = 0xD2AE6E }
+        }
+        case "shot-collage": NavigationStack { CollageView() }
+        case "shot-resize": NavigationStack { ResizeView() }
+        case "shot-compress": NavigationStack { CompressView() }
+        case "shot-passport": NavigationStack { PassportView() }
+        case "shot-watermark": NavigationStack { WatermarkView() }
+        case "shot-metadata": NavigationStack { MetadataView() }
         default: HomeView()
         }
     }
@@ -87,10 +127,12 @@ enum SamplePhoto {
 /// When a screen name ends in "-filled", tool screens start with generated sample photos so CI can check them with data.
 enum DebugSamples {
     static var enabled = false
+    /// The passport demo needs a portrait, not a landscape.
+    static var portrait = false
 
     static func photos(_ count: Int, withMetadata: Bool = false) -> [LoadedPhoto] {
         (0..<count).map { index in
-            let base = SamplePhoto.make(variant: index)
+            let base = RealSamples.hasPhotos ? (portrait ? RealSamples.photo("portrait_woman") : RealSamples.rotating(index)) : SamplePhoto.make(variant: index)
             guard withMetadata else { return base }
             let properties: [String: Any] = [
                 kCGImagePropertyTIFFDictionary as String: [
@@ -115,5 +157,30 @@ enum DebugSamples {
             return LoadedPhoto(image: base.image, originalData: base.originalData, properties: properties, name: base.name)
         }
     }
+}
+
+/// Real photographs for store screenshots. CI copies design/photos/*.jpg into the simulator app's Documents/samples folder.
+enum RealSamples {
+    static var folder: URL? {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("samples", isDirectory: true)
+    }
+
+    static var hasPhotos: Bool {
+        guard let folder, let items = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return false }
+        return items.contains { $0.hasSuffix(".jpg") }
+    }
+
+    static func photo(_ name: String) -> LoadedPhoto {
+        if let url = folder?.appendingPathComponent("(name).jpg"),
+           let data = try? Data(contentsOf: url),
+           let loaded = PhotoLoader.load(data: data, maxPixel: 3072, name: name) {
+            return loaded
+        }
+        return SamplePhoto.make()
+    }
+
+    private static let order = ["landscape_mountain", "travel_beach", "city_street", "flowers", "food_table", "pet_dog", "product_shoe", "friends_outdoor"]
+
+    static func rotating(_ index: Int) -> LoadedPhoto { photo(order[index % order.count]) }
 }
 #endif

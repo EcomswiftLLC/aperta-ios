@@ -8,11 +8,23 @@ struct EditorView: View {
     @State private var showExport = false
     @State private var confirmClose = false
 
+    #if DEBUG
+    /// Debug builds only: lets CI put the editor into a finished-looking state for store screenshots.
+    private var debugPreset: (@MainActor (EditorModel) async -> Void)?
+
+    init(photo: LoadedPhoto, startTool: EditorTool? = nil, debugPreset: (@MainActor (EditorModel) async -> Void)? = nil) {
+        let model = EditorModel(photo: photo)
+        model.tool = startTool
+        _model = StateObject(wrappedValue: model)
+        self.debugPreset = debugPreset
+    }
+    #else
     init(photo: LoadedPhoto, startTool: EditorTool? = nil) {
         let model = EditorModel(photo: photo)
         model.tool = startTool
         _model = StateObject(wrappedValue: model)
     }
+    #endif
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,6 +42,9 @@ struct EditorView: View {
         }
         .apScreen()
         .preferredColorScheme(.dark)
+        #if DEBUG
+        .task { if let debugPreset { await debugPreset(model) } }
+        #endif
         .animation(.easeOut(duration: 0.22), value: model.tool)
         .sheet(isPresented: $showExport) {
             ExportSheet(model: model)
