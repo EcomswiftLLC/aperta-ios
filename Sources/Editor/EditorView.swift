@@ -89,7 +89,7 @@ struct EditorView: View {
                     .font(AP.Font.headline)
                     .foregroundStyle(AP.Palette.onBrass)
                     .padding(.horizontal, 18)
-                    .frame(height: 38)
+                    .frame(height: 44)
                     .background(AP.Palette.brass, in: Capsule())
             }
             .accessibilityLabel(Text("Export"))
@@ -124,6 +124,8 @@ struct EditorView: View {
             )
             .accessibilityLabel(Text("Hold to compare with the original"))
             .accessibilityAddTraits(.isButton)
+            .accessibilityAction(named: Text("Show original")) { model.showingOriginal = true }
+            .accessibilityAction(named: Text("Show edited")) { model.showingOriginal = false }
     }
 
     // MARK: Panels and tray

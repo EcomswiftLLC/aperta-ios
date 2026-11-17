@@ -112,8 +112,8 @@ enum MtdReader {
 
     private static func imageRows(photo: LoadedPhoto, properties: [String: Any], formatTitle: String) -> [MtdRow] {
         var rows: [MtdRow] = []
-        let width = photo.image.width
-        let height = photo.image.height
+        let width = Int(photo.pixelSize.width)
+        let height = Int(photo.pixelSize.height)
         let megapixels = Double(width * height) / 1_000_000
         rows.append(MtdRow(label: "Size", value: "\(width) \u{00D7} \(height) pixels, \(trimmed(megapixels, decimals: 1)) MP"))
         rows.append(MtdRow(label: "File size", value: ByteText.string(photo.originalBytes)))
@@ -579,7 +579,7 @@ struct MetadataView: View {
         failed = false
         report = nil
         // A large limit keeps the photo at its full size, so the clean copy has the same pixels.
-        await selection.load([item], maxPixel: 20_000)
+        await selection.load([item], maxPixel: 20_000, lazy: false)
         if let photo = selection.photos.first {
             report = MtdReader.report(for: photo)
         }

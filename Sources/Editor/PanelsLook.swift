@@ -72,7 +72,7 @@ struct PanelHeader: View {
                 Image(systemName: "checkmark")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(AP.Palette.onBrass)
-                    .frame(width: 44, height: 36)
+                    .frame(width: 44, height: 44)
                     .background(AP.Palette.brass, in: Capsule())
             }
             .accessibilityLabel(Text("Done"))
@@ -153,7 +153,7 @@ struct AdjustPanel: View {
             }
             .foregroundStyle(kind == item ? AP.Palette.onBrass : AP.Palette.paper)
             .padding(.horizontal, 12)
-            .frame(minHeight: 40)
+            .frame(minHeight: 44)
             .background(kind == item ? AP.Palette.brass : AP.Palette.graphite, in: Capsule())
         }
         .buttonStyle(.plain)
@@ -350,7 +350,9 @@ struct CropPanel: View {
 
     private func flip(horizontal: Bool) {
         model.commit { state in
-            if horizontal { state.crop.flipH.toggle() } else { state.crop.flipV.toggle() }
+            // Flips are applied before the rotation, so after a quarter turn the buttons swap axes.
+            let swapped = abs(state.crop.quarterTurns) % 2 == 1
+            if horizontal != swapped { state.crop.flipH.toggle() } else { state.crop.flipV.toggle() }
         }
     }
 

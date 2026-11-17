@@ -94,7 +94,7 @@ struct APChip: View {
             }
             .foregroundStyle(selected ? AP.Palette.onBrass : AP.Palette.paper)
             .padding(.horizontal, 14)
-            .frame(minHeight: 40)
+            .frame(minHeight: 44)
             .background(selected ? AP.Palette.brass : AP.Palette.graphite, in: Capsule())
             .overlay(Capsule().strokeBorder(selected ? Color.clear : AP.Palette.line, lineWidth: 1))
         }
@@ -130,6 +130,7 @@ struct DialSlider: View {
     var onEditingChanged: (Bool) -> Void = { _ in }
 
     @State private var dragStart: Double?
+    @State private var didStartEditing = false
     @State private var lastTick: Int = -1
 
     private let rulerWidth: CGFloat = 700
@@ -199,8 +200,10 @@ struct DialSlider: View {
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { drag in
-                    if dragStart == nil {
-                        dragStart = value
+                    if dragStart == nil { dragStart = value }
+                    // A tap or a resting finger is not an edit, so it must not add an undo step.
+                    if !didStartEditing && abs(drag.translation.width) >= 3 {
+                        didStartEditing = true
                         onEditingChanged(true)
                     }
                     let delta = -Double(drag.translation.width) / Double(rulerWidth) * span
@@ -215,7 +218,10 @@ struct DialSlider: View {
                 }
                 .onEnded { _ in
                     dragStart = nil
-                    onEditingChanged(false)
+                    if didStartEditing {
+                        didStartEditing = false
+                        onEditingChanged(false)
+                    }
                 }
         )
     }

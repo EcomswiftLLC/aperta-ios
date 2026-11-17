@@ -34,7 +34,9 @@ final class EditPipeline {
     }
 
     func cgImage(_ image: CIImage) -> CGImage? {
-        let extent = image.extent.integral
+        // Round, never grow: a quarter turn can leave the extent at 3024.0000000001, and integral() would add a stray pixel column.
+        let raw = image.extent
+        let extent = CGRect(x: raw.minX.rounded(), y: raw.minY.rounded(), width: raw.width.rounded(), height: raw.height.rounded())
         guard extent.width >= 1, extent.height >= 1 else { return nil }
         return context.createCGImage(image, from: extent, format: .RGBA8, colorSpace: colorSpace)
     }

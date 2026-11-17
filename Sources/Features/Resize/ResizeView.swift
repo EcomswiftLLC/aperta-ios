@@ -76,7 +76,9 @@ private enum RszField: Hashable { case width, height }
 
 /// Pure work, safe to call off the main thread.
 private enum RszEngine {
-    static let maxSide: Int = 10_000
+    static let maxSide: Int = 8192
+    /// Keeps a single output under about 200 MB of bitmap memory.
+    static let maxPixels: Double = 50_000_000
 
     static func targetSize(for image: CGImage, plan: RszPlan) -> CGSize {
         let w = Double(image.width)
@@ -97,6 +99,11 @@ private enum RszEngine {
         }
         outW = min(Double(maxSide), max(1, outW))
         outH = min(Double(maxSide), max(1, outH))
+        if outW * outH > maxPixels {
+            let shrink = (maxPixels / (outW * outH)).squareRoot()
+            outW = max(1, (outW * shrink).rounded(.down))
+            outH = max(1, (outH * shrink).rounded(.down))
+        }
         return CGSize(width: outW, height: outH)
     }
 
@@ -335,8 +342,8 @@ struct ResizeView: View {
 
     private func fillFieldsFromFirstPhoto() {
         guard let first = firstPhoto else { return }
-        widthText = String(first.image.width)
-        heightText = String(first.image.height)
+        widthText = String(Int(first.pixelSize.width))
+        heightText = String(Int(first.pixelSize.height))
     }
 
     private static func digitsOnly(_ text: String) -> String {
@@ -353,14 +360,14 @@ struct ResizeView: View {
         let clean = Self.digitsOnly(newValue)
         if clean != newValue { heightText = clean; return }
         guard keepProportions, focusedField == .height,
-              let first = firstPhoto, let height = Int(clean), height > 0, first.image.height > 0 else { return }
-        let width = Int((Double(height) * Double(first.image.width) / Double(first.image.height)).rounded())
+              let first = firstPhoto, let height = Int(clean), height > 0, first.pixelSize.height > 0 else { return }
+        let width = Int((Double(height) * Double(first.pixelSize.width) / Double(first.pixelSize.height)).rounded())
         widthText = String(max(1, width))
     }
 
     private func syncHeightToWidth() {
-        guard let first = firstPhoto, let width = Int(widthText), width > 0, first.image.width > 0 else { return }
-        let height = Int((Double(width) * Double(first.image.height) / Double(first.image.width)).rounded())
+        guard let first = firstPhoto, let width = Int(widthText), width > 0, first.pixelSize.width > 0 else { return }
+        let height = Int((Double(width) * Double(first.pixelSize.height) / Double(first.pixelSize.width)).rounded())
         heightText = String(max(1, height))
     }
 

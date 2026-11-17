@@ -138,7 +138,7 @@ private enum CnvEngine {
     }
 
     /// One photo per page.
-    static func makePDF(_ images: [CGImage], pageSize: CnvPageSize, margin: CGFloat) -> Data {
+    static func makePDF(_ photos: [LoadedPhoto], pageSize: CnvPageSize, margin: CGFloat) -> Data {
         let format = UIGraphicsPDFRendererFormat()
         format.documentInfo = [
             kCGPDFContextCreator as String: "Aperta",
@@ -146,8 +146,9 @@ private enum CnvEngine {
         ]
         let renderer = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: a4), format: format)
         return renderer.pdfData { context in
-            for image in images {
+            for photo in photos {
                 autoreleasepool {
+                    let image: CGImage = photo.image
                     let page = pageRect(for: image, pageSize: pageSize, margin: margin)
                     context.beginPage(withBounds: page, pageInfo: [:])
                     let box = page.insetBy(dx: margin, dy: margin)
@@ -205,11 +206,10 @@ private final class CnvModel: ObservableObject {
     }
 
     private func buildPDF(photos: [LoadedPhoto], settings: CnvSettings) async {
-        let images: [CGImage] = photos.map { $0.image }
         let pageSize: CnvPageSize = settings.pageSize
         let margin = CGFloat(settings.margin)
         let data: Data = await Task.detached(priority: .userInitiated) { () -> Data in
-            CnvEngine.makePDF(images, pageSize: pageSize, margin: margin)
+            CnvEngine.makePDF(photos, pageSize: pageSize, margin: margin)
         }.value
         if Task.isCancelled { return }
         completed = photos.count

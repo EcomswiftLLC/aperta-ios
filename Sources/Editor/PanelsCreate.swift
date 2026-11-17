@@ -57,7 +57,7 @@ struct TextPanel: View {
                                 .font(Font(choice.uiFont(size: 15) as CTFont))
                                 .foregroundStyle(selected ? AP.Palette.onBrass : AP.Palette.paper)
                                 .padding(.horizontal, 14)
-                                .frame(minHeight: 40)
+                                .frame(minHeight: 44)
                                 .background(selected ? AP.Palette.brass : AP.Palette.graphite, in: Capsule())
                         }
                         .buttonStyle(.plain)

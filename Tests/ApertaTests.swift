@@ -88,4 +88,27 @@ final class ApertaTests: XCTestCase {
     func testCollageLayoutsTile() {
         XCTAssertTrue(CollageLayouts.allValid)
     }
+
+    func testJPEGExportPutsTransparencyOnWhite() throws {
+        let size = CGSize(width: 40, height: 40)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let clear = UIGraphicsImageRenderer(size: size, format: format).image { _ in }.cgImage!
+        let data = try XCTUnwrap(ImageCodec.encode(clear, format: .jpeg, quality: 0.95))
+        let decoded = try XCTUnwrap(PhotoLoader.decode(data, maxPixel: 100))
+        let pixel = try XCTUnwrap(decoded.dataProvider?.data)
+        let bytes = CFDataGetBytePtr(pixel)!
+        XCTAssertGreaterThan(Int(bytes[0]) + Int(bytes[1]) + Int(bytes[2]), 700, "transparent areas must be white in a JPEG")
+    }
+
+    func testLazyPhotoKeepsSizeAndDecodesOnDemand() throws {
+        let cg = makeImage(width: 900, height: 600)
+        let data = try XCTUnwrap(ImageCodec.encode(cg, format: .jpeg, quality: 0.9))
+        let lazy = try XCTUnwrap(PhotoLoader.loadLazy(data: data, maxPixel: 300, name: "T"))
+        XCTAssertEqual(lazy.pixelSize.width, 300)
+        XCTAssertEqual(lazy.pixelSize.height, 200)
+        XCTAssertEqual(lazy.image.width, 300)
+        XCTAssertEqual(lazy.image.height, 200)
+    }
 }

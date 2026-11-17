@@ -33,6 +33,9 @@ final class RewardedGate: NSObject, FullScreenContentDelegate {
     private var policy = RewardedPolicy()
     private let maxAge: TimeInterval = 55 * 60
 
+    private var failedLoads = 0
+    private let retryDelays: [UInt64] = [5, 15, 45]
+
     private var earned = false
     private var proceed: (() -> Void)?
 
@@ -56,9 +59,18 @@ final class RewardedGate: NSObject, FullScreenContentDelegate {
                 self.ad = loaded
                 self.loadedAt = Date()
                 self.loading = false
+                self.failedLoads = 0
             } catch {
                 AdsLog.logger.info("Rewarded ad failed to load: \(error.localizedDescription, privacy: .public)")
-                self?.loading = false
+                guard let self else { return }
+                self.loading = false
+                // One no-fill or network hiccup must not leave the session without an ad: try again a few times.
+                if self.failedLoads < self.retryDelays.count {
+                    let delay = self.retryDelays[self.failedLoads]
+                    self.failedLoads += 1
+                    try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
+                    self.preloadIfPossible()
+                }
             }
         }
     }

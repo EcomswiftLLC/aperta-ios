@@ -50,27 +50,63 @@ enum OutputFormat: String, CaseIterable, Identifiable {
 
 struct LoadedPhoto: Identifiable {
     let id = UUID()
-    /// Upright pixels (EXIF orientation already applied), capped to the size the caller asked for.
-    let image: CGImage
+    /// Decoded pixels when the photo was loaded eagerly (single-photo screens). Batch tools leave this empty and decode on demand,
+    /// so twenty photos never sit in memory as twenty large bitmaps at once.
+    private let storedImage: CGImage?
     /// The bytes the person picked, untouched.
     let originalData: Data
     /// Metadata dictionary of the original file (EXIF, GPS, TIFF ...).
     let properties: [String: Any]
     let name: String
+    /// Upright pixel size of `image` (EXIF orientation applied, capped to the size the caller asked for).
+    let pixelSize: CGSize
+    private let maxPixel: Int
+
+    init(image: CGImage, originalData: Data, properties: [String: Any], name: String) {
+        storedImage = image
+        self.originalData = originalData
+        self.properties = properties
+        self.name = name
+        pixelSize = CGSize(width: image.width, height: image.height)
+        maxPixel = max(image.width, image.height)
+    }
+
+    init(lazyData: Data, properties: [String: Any], name: String, pixelSize: CGSize, maxPixel: Int) {
+        storedImage = nil
+        originalData = lazyData
+        self.properties = properties
+        self.name = name
+        self.pixelSize = pixelSize
+        self.maxPixel = maxPixel
+    }
+
+    /// Upright pixels (EXIF orientation already applied). For lazily loaded photos this decodes the file each time it is read,
+    /// so read it once per job and let it go.
+    var image: CGImage {
+        if let storedImage { return storedImage }
+        return PhotoLoader.decode(originalData, maxPixel: maxPixel) ?? PhotoLoader.blank
+    }
 
     var originalBytes: Int { originalData.count }
-    var pixelSize: CGSize { CGSize(width: image.width, height: image.height) }
     var uiImage: UIImage { UIImage(cgImage: image) }
 }
 
 enum PhotoLoader {
+    /// A single transparent pixel, only used if a file that decoded once can no longer be read.
+    static let blank: CGImage = {
+        let context = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        return context.makeImage()!
+    }()
+
     /// Reads a picked item. Returns nil if the data cannot be decoded as an image.
-    static func load(_ item: PhotosPickerItem, maxPixel: Int = 4096, name: String? = nil) async -> LoadedPhoto? {
+    static func load(_ item: PhotosPickerItem, maxPixel: Int = 4096, name: String? = nil, lazy: Bool = false) async -> LoadedPhoto? {
         guard let data = try? await item.loadTransferable(type: Data.self) else { return nil }
+        if lazy { return loadLazy(data: data, maxPixel: maxPixel, name: name ?? "Photo") }
         return load(data: data, maxPixel: maxPixel, name: name ?? "Photo")
     }
 
-    static func load(data: Data, maxPixel: Int = 4096, name: String = "Photo") -> LoadedPhoto? {
+    static func decode(_ data: Data, maxPixel: Int) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -78,9 +114,32 @@ enum PhotoLoader {
             kCGImageSourceShouldCacheImmediately: true,
             kCGImageSourceThumbnailMaxPixelSize: maxPixel,
         ]
-        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    }
+
+    static func load(data: Data, maxPixel: Int = 4096, name: String = "Photo") -> LoadedPhoto? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = decode(data, maxPixel: maxPixel) else { return nil }
         let props = (CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any]) ?? [:]
         return LoadedPhoto(image: image, originalData: data, properties: props, name: name)
+    }
+
+    /// Reads only the header: the pixels are decoded later, one photo at a time, when a tool processes it.
+    static func loadLazy(data: Data, maxPixel: Int = 4096, name: String = "Photo") -> LoadedPhoto? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetCount(source) > 0,
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
+              let width = (props[kCGImagePropertyPixelWidth as String] as? NSNumber)?.doubleValue,
+              let height = (props[kCGImagePropertyPixelHeight as String] as? NSNumber)?.doubleValue,
+              width > 0, height > 0 else { return nil }
+        let orientation = (props[kCGImagePropertyOrientation as String] as? NSNumber)?.intValue ?? 1
+        var size = orientation >= 5 && orientation <= 8 ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
+        let longest = max(size.width, size.height)
+        if longest > Double(maxPixel) {
+            let ratio = Double(maxPixel) / longest
+            size = CGSize(width: (size.width * ratio).rounded(), height: (size.height * ratio).rounded())
+        }
+        return LoadedPhoto(lazyData: data, properties: props, name: name, pixelSize: size, maxPixel: maxPixel)
     }
 }
 
@@ -91,13 +150,13 @@ final class PhotoSelection: ObservableObject {
     @Published var isLoading = false
     @Published var failedCount = 0
 
-    func load(_ items: [PhotosPickerItem], maxPixel: Int = 4096, append: Bool = false) async {
+    func load(_ items: [PhotosPickerItem], maxPixel: Int = 4096, append: Bool = false, lazy: Bool = true) async {
         guard !items.isEmpty else { return }
         isLoading = true
         failedCount = 0
         var result: [LoadedPhoto] = append ? photos : []
         for (index, item) in items.enumerated() {
-            if let photo = await PhotoLoader.load(item, maxPixel: maxPixel, name: "Photo \(result.count + 1)") {
+            if let photo = await PhotoLoader.load(item, maxPixel: maxPixel, name: "Photo \(result.count + 1)", lazy: lazy) {
                 result.append(photo)
             } else {
                 failedCount += 1
@@ -126,6 +185,8 @@ enum ImageCodec {
         guard let destination = CGImageDestinationCreateWithData(data, format.utType.identifier as CFString, 1, nil) else {
             return nil
         }
+        // JPEG has no transparency, so transparent pixels would turn black. Put them on white instead.
+        let image = format == .jpeg ? flattenedOnWhite(image) : image
         var options: [CFString: Any] = [:]
         if let properties {
             for (key, value) in sanitized(properties) { options[key as CFString] = value }
@@ -136,6 +197,29 @@ enum ImageCodec {
         CGImageDestinationAddImage(destination, image, options as CFDictionary)
         guard CGImageDestinationFinalize(destination) else { return nil }
         return data as Data
+    }
+
+    static func hasAlpha(_ image: CGImage) -> Bool {
+        switch image.alphaInfo {
+        case .none, .noneSkipFirst, .noneSkipLast: return false
+        default: return true
+        }
+    }
+
+    /// Draws a picture with transparency onto an opaque white background. Opaque pictures are returned unchanged.
+    static func flattenedOnWhite(_ image: CGImage) -> CGImage {
+        guard hasAlpha(image) else { return image }
+        var space = CGColorSpace(name: CGColorSpace.sRGB)!
+        if let own = image.colorSpace, own.model == .rgb, own.supportsOutput { space = own }
+        guard let ctx = CGContext(
+            data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ) else { return image }
+        let rect = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        ctx.fill(rect)
+        ctx.draw(image, in: rect)
+        return ctx.makeImage() ?? image
     }
 
     /// Removes keys that no longer describe the exported pixels.
@@ -190,7 +274,7 @@ enum ImageCodec {
         if width == image.width && height == image.height { return image }
         var space = CGColorSpace(name: CGColorSpace.sRGB)!
         if let own = image.colorSpace, own.model == .rgb, own.supportsOutput { space = own }
-        let info = CGImageAlphaInfo.premultipliedLast.rawValue
+        let info = hasAlpha(image) ? CGImageAlphaInfo.premultipliedLast.rawValue : CGImageAlphaInfo.noneSkipLast.rawValue
         let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: info)
             ?? CGContext(
                 data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
