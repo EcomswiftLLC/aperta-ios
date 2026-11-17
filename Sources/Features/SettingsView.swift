@@ -5,8 +5,6 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.requestReview) private var requestReview
     @ObservedObject private var ads = AdsManager.shared
-    @EnvironmentObject private var exportStore: ExportStore
-    @State private var restoreMessage: String?
 
     private let privacyURL = URL(string: "https://ecomswiftllc.github.io/aperta/privacy/")!
     private let supportURL = URL(string: "https://ecomswiftllc.github.io/aperta/support/")!
@@ -15,19 +13,8 @@ struct SettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: AP.Space.l) {
-                    ToolHeader(title: "Settings", subtitle: "Editing is free. Your photos never leave your device.")
+                    ToolHeader(title: "Settings", subtitle: "Aperta is free. Your photos never leave your device.")
                     VStack(spacing: 0) {
-                        APHairline()
-                        exportsRow
-                        APHairline()
-                        Button {
-                            restore()
-                        } label: {
-                            rowLabel("Restore purchases", symbol: "arrow.clockwise")
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(exportStore.isBusy)
-                        .accessibilityHint(Text("Checks the App Store for a Premium purchase on this Apple Account"))
                         APHairline()
                         if ads.privacyOptionsRequired {
                             row("Ad privacy choices", symbol: "hand.raised") { ads.presentPrivacyOptions() }
@@ -41,12 +28,6 @@ struct SettingsView: View {
                         APHairline()
                         link("Email us", symbol: "envelope", url: URL(string: "mailto:support@ecomswiftllc.com")!)
                         APHairline()
-                    }
-                    if let restoreMessage {
-                        Text(restoreMessage)
-                            .font(AP.Font.callout)
-                            .foregroundStyle(AP.Palette.paper)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
                     Text("Version \(version)")
                         .font(AP.Font.caption)
@@ -64,48 +45,6 @@ struct SettingsView: View {
             }
         }
         .preferredColorScheme(.dark)
-    }
-
-    /// What each save or share costs, and what is left.
-    private var exportsRow: some View {
-        HStack(spacing: AP.Space.m) {
-            Image(systemName: "photo.on.rectangle")
-                .font(.system(size: 17))
-                .foregroundStyle(AP.Palette.brass)
-                .frame(width: 28)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Your exports").font(AP.Font.body).foregroundStyle(AP.Palette.paper)
-                Text(exportsDetail).font(AP.Font.caption).foregroundStyle(AP.Palette.mist)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-        }
-        .padding(.vertical, 14)
-        .frame(minHeight: 48)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var exportsDetail: String {
-        if exportStore.isPremium { return "Premium is active. Exports have no limit." }
-        let count = exportStore.credits
-        if count == 1 { return "1 export left from export packs" }
-        if count > 1 { return "\(count) exports left from export packs" }
-        return "No exports left. Each save or share asks for a pack or Premium."
-    }
-
-    private func restore() {
-        restoreMessage = nil
-        Task {
-            switch await exportStore.restore() {
-            case .premiumActive:
-                restoreMessage = "Premium is active again."
-            case .nothingFound:
-                restoreMessage = "No Premium purchase was found for this Apple Account. Export packs are used up and cannot be restored."
-            case .failed:
-                restoreMessage = "Purchases could not be restored right now. Check your connection and try again."
-            }
-        }
     }
 
     private var version: String {
@@ -157,7 +96,7 @@ struct OnboardingView: View {
             Text("Welcome to\nAperta.")
                 .apDisplay(50)
                 .lineSpacing(-2)
-            Text("A complete photo studio that keeps your pictures private. Editing is free. Saving and sharing use an export that you can buy.")
+            Text("A complete photo studio that costs nothing and keeps your pictures private.")
                 .font(AP.Font.body)
                 .foregroundStyle(AP.Palette.mist)
                 .padding(.top, AP.Space.m)

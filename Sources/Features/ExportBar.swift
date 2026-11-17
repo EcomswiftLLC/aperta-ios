@@ -1,22 +1,16 @@
 import SwiftUI
 
 /// The standard way every tool finishes: save to the photo library or share.
-/// Saving or sharing uses one export: an export pack, Premium, or one export earned by watching a rewarded ad
-/// (see `ExportPaywallSheet` and `RewardedGate`). With none available the paywall opens, and after a purchase the
-/// action the person asked for continues by itself. An export is used up only after the photos were really saved,
-/// or the share sheet reported that the file was really shared. Cancelling or failing uses nothing.
+/// Each export is paid for by one rewarded ad the person chooses to watch (see `RewardedGate`). With no ad ready,
+/// saving and sharing are simply free. Shows a short status line.
 struct ExportBar: View {
     let items: [ExportItem]
     /// Text for the status line after saving, for example "Saved 3 photos".
     var savedMessage: String? = nil
 
-    @EnvironmentObject private var exportStore: ExportStore
     @State private var status: Status = .idle
-    @State private var sheet: ExportPresentation?
-    /// What the person asked for while the paywall was open.
-    @State private var pending: PendingAction?
-
-    private enum PendingAction { case save, share }
+    @State private var shareURLs: [URL] = []
+    @State private var showShare = false
 
     private enum Status: Equatable {
         case idle, saving
@@ -28,7 +22,7 @@ struct ExportBar: View {
         VStack(spacing: AP.Space.s) {
             HStack(spacing: AP.Space.s) {
                 Button {
-                    request(.save)
+                    RewardedGate.shared.requestExport { Task { await save() } }
                 } label: {
                     HStack(spacing: 8) {
                         if status == .saving { ProgressView().tint(AP.Palette.onBrass) }
@@ -40,7 +34,7 @@ struct ExportBar: View {
                 .disabled(items.isEmpty || status == .saving)
 
                 Button {
-                    request(.share)
+                    RewardedGate.shared.requestExport { share() }
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                         .frame(width: 20)
@@ -51,36 +45,11 @@ struct ExportBar: View {
             }
             statusLine
         }
-        .exportSheets($sheet, onUnlocked: continuePending, onShareFinished: shareFinished)
-    }
-
-    // MARK: Gate
-
-    private func request(_ action: PendingAction) {
-        guard exportStore.access.isOpen else {
-            pending = action
-            sheet = .paywall
-            return
+        .sheet(isPresented: $showShare) {
+            ShareSheet(urls: shareURLs)
+                .presentationDetents([.medium, .large])
+                .ignoresSafeArea()
         }
-        run(action)
-    }
-
-    private func run(_ action: PendingAction) {
-        switch action {
-        case .save: Task { await save() }
-        case .share: share()
-        }
-    }
-
-    private func continuePending() {
-        guard let action = pending else { return }
-        pending = nil
-        guard exportStore.access.isOpen else { return }
-        run(action)
-    }
-
-    private func shareFinished(_ completed: Bool) {
-        exportStore.settle(completed ? .completed : .cancelled)
     }
 
     @ViewBuilder
@@ -101,8 +70,6 @@ struct ExportBar: View {
         status = .saving
         do {
             try await LibrarySaver.save(items)
-            // The photos are in the library now, so this export is used up.
-            exportStore.settle(.completed)
             APHaptics.success()
             let text = savedMessage ?? (items.count == 1 ? "Saved to your library" : "Saved \(items.count) photos to your library")
             status = .saved(text)
@@ -119,7 +86,8 @@ struct ExportBar: View {
             status = .failed("Could not prepare the file to share.")
             return
         }
-        sheet = .share(urls)
+        shareURLs = urls
+        showShare = true
     }
 }
 
