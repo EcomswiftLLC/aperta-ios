@@ -6,6 +6,15 @@ import ImageIO
 /// Debug builds can open a given screen directly, with a generated sample photo, so CI can take screenshots
 /// of every screen without tapping through the app: `xcrun simctl launch <device> com.ecomswift.aperta -apScreen home`.
 enum DebugScreens {
+    /// `-apLandscape YES` turns an iPad simulator to landscape so CI can check wide layouts.
+    static func landscapeIfRequested() {
+        guard UserDefaults.standard.bool(forKey: "apLandscape") else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else { return }
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) { _ in }
+        }
+    }
+
     static var requested: String? {
         guard let value = UserDefaults.standard.string(forKey: "apScreen"), !value.isEmpty else { return nil }
         return value
