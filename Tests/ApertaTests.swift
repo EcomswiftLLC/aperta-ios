@@ -225,6 +225,8 @@ final class ApertaTests: XCTestCase {
         var state = EditState()
         state.frame.fit = .square
         state.frame.blurFill = false
+        state.frame.fillHex = 0x808080
+        state.frame.borderHex = 0x808080
         try assertBlurLandsOnDetail(state)
     }
 
@@ -233,6 +235,8 @@ final class ApertaTests: XCTestCase {
         state.crop.rect = CGRect(x: 0.2, y: 0, width: 0.6, height: 1)
         state.frame.fit = .portrait45
         state.frame.blurFill = false
+        state.frame.fillHex = 0x808080
+        state.frame.borderHex = 0x808080
         state.frame.border = 5
         try assertBlurLandsOnDetail(state)
     }
@@ -243,6 +247,8 @@ final class ApertaTests: XCTestCase {
         state.crop.quarterTurns = 1
         state.frame.fit = .square
         state.frame.blurFill = false
+        state.frame.fillHex = 0x808080
+        state.frame.borderHex = 0x808080
         try assertBlurLandsOnDetail(state)
     }
 
