@@ -88,6 +88,23 @@ struct OnboardingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        // Scrolls when the screen is short (iPhone in landscape, large text), so the
+        // copy is never cut off and "Get started" is always reachable.
+        GeometryReader { geo in
+            ScrollView {
+                content
+                    .frame(minHeight: geo.size.height)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        .readableWidth(560)
+        .apScreen()
+        .onAppear {
+            if reduceMotion { appeared = true } else { withAnimation(.easeOut(duration: 1.4)) { appeared = true } }
+        }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 0) {
             Spacer(minLength: AP.Space.xl)
             ApertureMark(lineWidth: 1.5)
@@ -122,11 +139,6 @@ struct OnboardingView: View {
             .padding(.bottom, AP.Space.l)
         }
         .padding(.horizontal, AP.Space.l)
-        .readableWidth(560)
-        .apScreen()
-        .onAppear {
-            if reduceMotion { appeared = true } else { withAnimation(.easeOut(duration: 1.4)) { appeared = true } }
-        }
     }
 
     private func line(_ symbol: String, _ title: String, _ detail: String) -> some View {
