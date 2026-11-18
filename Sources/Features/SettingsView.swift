@@ -122,6 +122,7 @@ struct OnboardingView: View {
             .padding(.bottom, AP.Space.l)
         }
         .padding(.horizontal, AP.Space.l)
+        .readableWidth(560)
         .apScreen()
         .onAppear {
             if reduceMotion { appeared = true } else { withAnimation(.easeOut(duration: 1.4)) { appeared = true } }
