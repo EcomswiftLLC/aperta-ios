@@ -19,6 +19,35 @@ struct RewardedPolicy: Equatable {
     mutating func didEarnReward(now: Date = Date()) {
         lastReward = now
     }
+
+    /// True while a watched ad still covers exports.
+    func isWithinGrace(now: Date = Date()) -> Bool {
+        guard let lastReward else { return false }
+        return now.timeIntervalSince(lastReward) < Self.graceInterval
+    }
+
+    /// What to do when the person asks to save or share.
+    enum Decision: Equatable {
+        /// Run the export now (no ads, no ad ready and none coming, or an ad was just watched).
+        case exportNow
+        /// Ask whether to watch the ready ad.
+        case offerAd
+        /// The ad was closed early and a new one is loading right now: wait for it (briefly) instead of letting an
+        /// immediate second tap export for free.
+        case waitForAd
+    }
+
+    /// `reloadInFlightAfterEarlyClose` is true only after an ad was closed before its reward and its replacement is still
+    /// loading. Waiting is capped by the caller (`maxWait`), so an export is never blocked for good.
+    func decision(adsReady: Bool, adReady: Bool, reloadInFlightAfterEarlyClose: Bool, now: Date = Date()) -> Decision {
+        guard adsReady else { return .exportNow }
+        if shouldOffer(adReady: adReady, now: now) { return .offerAd }
+        if !adReady && reloadInFlightAfterEarlyClose && !isWithinGrace(now: now) { return .waitForAd }
+        return .exportNow
+    }
+
+    /// Longest a tap waits for the replacement ad after an early close, in seconds.
+    static let maxWait: TimeInterval = 6
 }
 
 /// Aperta is free. Saving or sharing a finished photo is paid for by watching one short rewarded ad, which the person
@@ -38,6 +67,10 @@ final class RewardedGate: NSObject, FullScreenContentDelegate {
 
     private var earned = false
     private var proceed: (() -> Void)?
+    /// Set when an ad is closed before its reward, until the replacement ad is ready (or the person gave up waiting).
+    private var earlyCloseReloadPending = false
+    private var waiting = false
+    private var waitCancelled = false
 
     private override init() { super.init() }
 
@@ -60,6 +93,7 @@ final class RewardedGate: NSObject, FullScreenContentDelegate {
                 self.loadedAt = Date()
                 self.loading = false
                 self.failedLoads = 0
+                self.earlyCloseReloadPending = false
             } catch {
                 AdsLog.logger.info("Rewarded ad failed to load: \(error.localizedDescription, privacy: .public)")
                 guard let self else { return }
@@ -78,16 +112,32 @@ final class RewardedGate: NSObject, FullScreenContentDelegate {
     /// Runs `action` right away when no ad is needed, otherwise asks first. The action runs only after the ad was
     /// watched to the end, or when the ad could not be shown. "Not now" runs nothing.
     func requestExport(_ action: @escaping () -> Void) {
-        guard AdsManager.shared.adsReady,
-              policy.shouldOffer(adReady: hasUsableAd),
-              let presenter = AdsPresenter.topViewController() else {
+        guard !waiting else { return }
+        let decision = policy.decision(
+            adsReady: AdsManager.shared.adsReady,
+            adReady: hasUsableAd,
+            reloadInFlightAfterEarlyClose: earlyCloseReloadPending && loading
+        )
+        switch decision {
+        case .exportNow:
             action()
             preloadIfPossible()
-            return
+        case .offerAd:
+            guard let presenter = AdsPresenter.topViewController() else {
+                action()
+                preloadIfPossible()
+                return
+            }
+            presentOffer(from: presenter, action: action)
+        case .waitForAd:
+            waitForReplacement(then: action)
         }
+    }
+
+    private func presentOffer(from presenter: UIViewController, action: @escaping () -> Void) {
         let alert = UIAlertController(
             title: "Watch a short ad to export",
-            message: "Aperta is free because of ads. Watch one ad to save or share your photo.",
+            message: "Aperta is free because of ads. Watch one ad to the end to save or share your photo.",
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "Not now", style: .cancel))
@@ -95,6 +145,48 @@ final class RewardedGate: NSObject, FullScreenContentDelegate {
             self?.show(then: action)
         })
         presenter.present(alert, animated: true)
+    }
+
+    /// After an early close the next ad is already loading. Wait up to `RewardedPolicy.maxWait` seconds for it. If it does
+    /// not arrive in time, the export goes ahead, so a missing ad never blocks anyone for good.
+    private func waitForReplacement(then action: @escaping () -> Void) {
+        guard let presenter = AdsPresenter.topViewController() else {
+            earlyCloseReloadPending = false
+            action()
+            preloadIfPossible()
+            return
+        }
+        waiting = true
+        waitCancelled = false
+        let alert = UIAlertController(title: "Getting the next ad ready", message: "Just a moment.", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
+            self?.waitCancelled = true
+        })
+        presenter.present(alert, animated: true)
+        Task { [weak self] in
+            var waited: TimeInterval = 0
+            while waited < RewardedPolicy.maxWait {
+                guard let current = self else { return }
+                if current.waitCancelled || current.hasUsableAd || !current.loading { break }
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                waited += 0.25
+            }
+            guard let gate = self else { return }
+            gate.waiting = false
+            if gate.waitCancelled {
+                alert.dismiss(animated: true)
+                return
+            }
+            gate.earlyCloseReloadPending = false
+            alert.dismiss(animated: true) {
+                if gate.hasUsableAd, let top = AdsPresenter.topViewController() {
+                    gate.presentOffer(from: top, action: action)
+                } else {
+                    action()
+                    gate.preloadIfPossible()
+                }
+            }
+        }
     }
 
     private func show(then action: @escaping () -> Void) {
@@ -118,9 +210,28 @@ final class RewardedGate: NSObject, FullScreenContentDelegate {
         if earned {
             policy.didEarnReward()
             earned = false
+            earlyCloseReloadPending = false
             action?()
+        } else if action != nil {
+            // Closed before the reward: nothing is exported, and the person is told why. The next ad is loading now, so a
+            // quick second tap waits for it (see `requestExport`) instead of exporting for free.
+            earlyCloseReloadPending = true
+            preloadIfPossible()
+            notifyEarlyClose()
+            return
         }
         preloadIfPossible()
+    }
+
+    private func notifyEarlyClose() {
+        guard let presenter = AdsPresenter.topViewController() else { return }
+        let alert = UIAlertController(
+            title: "Watch the whole ad to export",
+            message: "The ad was closed before it finished, so nothing was saved or shared. Tap Save or Share to try again.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        presenter.present(alert, animated: true)
     }
 
     func ad(_ ad: FullScreenPresentingAd, didFailToPresentFullScreenContentWithError error: Error) {

@@ -24,11 +24,13 @@ final class EditPipeline {
     ///   - applyCrop: false while the crop tool is open, so the whole picture is visible.
     func render(source: CIImage, mask: CIImage?, state: EditState, applyCrop: Bool = true) -> CIImage {
         var image = composeBackground(source: source, mask: mask, background: state.background)
+        // Blur, pixelate and smooth strokes are stored in source coordinates (see StrokeSpace), so they are applied to the
+        // source pixels first. Turns, crop and frame then carry them along, and a stroke can never end up on the wrong pixels.
+        image = applyLocalEffects(image, state: state)
         image = geometry(image, crop: state.crop).image
         if applyCrop { image = cropped(image, rect: state.crop.rect) }
         image = adjust(image, state: state)
         image = FilterLibrary.apply(state.filter, to: image, intensity: state.filterIntensity)
-        image = applyLocalEffects(image, state: state)
         if applyCrop { image = applyFrame(image, frame: state.frame) }
         return image
     }
@@ -229,6 +231,9 @@ final class EditPipeline {
 
     // MARK: Local blur, pixelate and smooth
 
+    /// The Strength slider never goes below this, so a stroke always changes the pixels it covers.
+    static let minBlurStrength: Double = 20
+
     private func applyLocalEffects(_ input: CIImage, state: EditState) -> CIImage {
         guard !state.blurs.isEmpty else { return input }
         var image = input
@@ -237,7 +242,7 @@ final class EditPipeline {
         for mode in BlurMode.allCases {
             let strokes = state.blurs.filter { $0.mode == mode }
             guard !strokes.isEmpty, let mask = maskImage(strokes: strokes, size: extent.size) else { continue }
-            let strength = state.blurStrength / 100
+            let strength = max(Self.minBlurStrength, min(100, state.blurStrength)) / 100
             let effect: CIImage
             switch mode {
             case .blur:
@@ -262,7 +267,8 @@ final class EditPipeline {
         return image
     }
 
-    private func maskImage(strokes: [BlurStroke], size: CGSize) -> CIImage? {
+    /// Black picture with the strokes painted white, in source pixels (points are fractions of `size`, from the top left).
+    func maskImage(strokes: [BlurStroke], size: CGSize) -> CIImage? {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = true

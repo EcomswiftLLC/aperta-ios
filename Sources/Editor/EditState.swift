@@ -351,8 +351,9 @@ enum BlurMode: String, CaseIterable, Identifiable {
 
 struct BlurStroke: Identifiable, Equatable {
     var id = UUID()
+    /// Fractions of the SOURCE picture (before turns, crop and frame), origin top left. See `StrokeSpace`.
     var points: [CGPoint]
-    /// Fraction of the shorter side of the picture.
+    /// Fraction of the shorter side of the source picture.
     var width: Double
     var mode: BlurMode
 }

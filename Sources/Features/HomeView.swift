@@ -21,8 +21,8 @@ enum ApertaTool: String, Hashable, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .collage: return "Combine two to nine photos in a clean layout"
-        case .compress: return "Make files smaller without visible loss"
-        case .resize: return "Exact sizes, and presets for every social network"
+        case .compress: return "Make files smaller, with the quality you choose"
+        case .resize: return "Exact sizes, and presets for popular social networks"
         case .convert: return "HEIC, JPG, PNG, or photos to one PDF"
         case .watermark: return "Add your name or logo to many photos at once"
         case .passport: return "Passport and visa photos with a print sheet"
@@ -231,7 +231,7 @@ struct HomeView: View {
             loading = false
             pickedItem = nil
         }
-        guard let photo = await PhotoLoader.load(item, maxPixel: 6144) else {
+        guard let photo = await PhotoLoader.load(item, maxPixel: PhotoLoader.editorMaxPixel) else {
             loadFailed = true
             return
         }

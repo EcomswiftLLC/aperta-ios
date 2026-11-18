@@ -2,8 +2,6 @@ import SwiftUI
 import UIKit
 import PhotosUI
 import ImageIO
-import MapKit
-import CoreLocation
 
 // MARK: - Model
 
@@ -24,13 +22,22 @@ struct MtdLocation {
     let latitude: Double
     let longitude: Double
     let rows: [MtdRow]
+
+    /// Apple Maps address for the position. It is opened only when the person taps "Open in Maps"; nothing is loaded before.
+    var mapsURL: URL? {
+        URL(string: String(format: "https://maps.apple.com/?ll=%.6f,%.6f&q=Photo%%20location", latitude, longitude))
+    }
 }
 
 struct MtdReport {
     let groups: [MtdGroup]
     let location: MtdLocation?
+    /// Place names stored as text in the photo (city, region, country), apart from the GPS position.
+    let placeRows: [MtdRow]
     let outputFormat: OutputFormat
     let formatTitle: String
+
+    var hasAnyLocation: Bool { location != nil || !placeRows.isEmpty }
 }
 
 // MARK: - Reading
@@ -63,15 +70,34 @@ enum MtdReader {
         return MtdReport(
             groups: groups,
             location: location(from: gps),
+            placeRows: placeRows(properties),
             outputFormat: format,
             formatTitle: formatTitle
         )
     }
 
+    /// True when the file still names a place: a GPS position or an IPTC place name (city, region, country, sub-location).
     static func hasLocation(_ data: Data) -> Bool {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else { return false }
         return location(from: properties[kCGImagePropertyGPSDictionary as String] as? [String: Any]) != nil
+            || !placeRows(properties).isEmpty
+    }
+
+    /// City, region and country written as text (IPTC), shown next to the GPS position.
+    static func placeRows(_ properties: [String: Any]) -> [MtdRow] {
+        guard let iptc = properties[kCGImagePropertyIPTCDictionary as String] as? [String: Any] else { return [] }
+        let fields: [(label: String, key: CFString)] = [
+            ("Place", kCGImagePropertyIPTCSubLocation),
+            ("City", kCGImagePropertyIPTCCity),
+            ("Region", kCGImagePropertyIPTCProvinceState),
+            ("Country", kCGImagePropertyIPTCCountryPrimaryLocationName),
+            ("Country code", kCGImagePropertyIPTCCountryPrimaryLocationCode),
+            ("Content location", kCGImagePropertyIPTCContentLocationName),
+        ]
+        return fields.compactMap { field in
+            text(iptc[field.key as String]).map { MtdRow(label: field.label, value: $0) }
+        }
     }
 
     // MARK: Groups
@@ -251,13 +277,20 @@ enum MtdCleaner {
                 }
                 result[kCGImagePropertyExifDictionary as String] = exif
             }
-            if !location, let gps = properties[gpsKey] {
-                result[gpsKey] = gps
+            if !location {
+                // The person chose to keep the place: put back the GPS position and the IPTC place names.
+                if let gps = properties[gpsKey] { result[gpsKey] = gps }
+                let iptcKey = kCGImagePropertyIPTCDictionary as String
+                if let iptc = properties[iptcKey] as? [String: Any] {
+                    let places = iptc.filter { ImageCodec.iptcLocationKeys.contains($0.key) }
+                    if !places.isEmpty { result[iptcKey] = places }
+                }
             }
             return result
         }
+        // Location only: the GPS position and the IPTC place names go, everything else stays.
         var result = ImageCodec.sanitized(properties)
-        if location { result.removeValue(forKey: gpsKey) }
+        if location { result = ImageCodec.removingLocation(result) }
         return result
     }
 }
@@ -412,11 +445,16 @@ struct MetadataView: View {
     private func locationSection(report: MtdReport, photoID: UUID) -> some View {
         VStack(alignment: .leading, spacing: AP.Space.s) {
             APSectionTitle(text: "Location")
-            if let location = report.location {
+            if report.hasAnyLocation {
                 locationNotice
-                mapPreview(location)
-                    .id(photoID)
-                rowList(location.rows)
+                if let location = report.location {
+                    rowList(location.rows)
+                    openInMapsButton(location)
+                        .id(photoID)
+                }
+                if !report.placeRows.isEmpty {
+                    rowList(report.placeRows)
+                }
             } else {
                 HStack(spacing: AP.Space.s) {
                     Image(systemName: "location.slash")
@@ -437,7 +475,7 @@ struct MetadataView: View {
                 .foregroundStyle(AP.Palette.brass)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("This photo contains its location")
+                Text("This photo contains location details")
                     .font(AP.Font.headline)
                     .foregroundStyle(AP.Palette.paper)
                 Text("Anyone you send the original file to can see where it was taken.")
@@ -455,26 +493,25 @@ struct MetadataView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func mapPreview(_ location: MtdLocation) -> some View {
-        let coordinate = CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude)
-        let region = MKCoordinateRegion(
-            center: coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.012, longitudeDelta: 0.012)
-        )
-        let position: MapCameraPosition = .region(region)
-        return Map(initialPosition: position, interactionModes: []) {
-            Marker("Photo location", coordinate: coordinate)
-                .tint(AP.Palette.brass)
+    /// No map is drawn inside the app, so nothing about the position is sent anywhere while this screen is open.
+    /// The person can choose to look at the spot in the Maps app.
+    @ViewBuilder
+    private func openInMapsButton(_ location: MtdLocation) -> some View {
+        if let url = location.mapsURL {
+            VStack(alignment: .leading, spacing: AP.Space.xs) {
+                Link(destination: url) {
+                    Label("Open in Maps", systemImage: "map")
+                        .font(AP.Font.label)
+                        .foregroundStyle(AP.Palette.brass)
+                        .frame(minHeight: 44)
+                }
+                .accessibilityHint(Text("Opens the Maps app at the photo's position"))
+                Text("Opens the Maps app, which looks up the position. Aperta itself sends nothing.")
+                    .font(AP.Font.caption)
+                    .foregroundStyle(AP.Palette.mist)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .frame(height: 160)
-        .clipShape(RoundedRectangle(cornerRadius: AP.Radius.control, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AP.Radius.control, style: .continuous)
-                .strokeBorder(AP.Palette.line, lineWidth: 1)
-        )
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("Map showing where the photo was taken"))
     }
 
     // MARK: Clean copy
@@ -501,12 +538,12 @@ struct MetadataView: View {
 
     private var optionsPanel: some View {
         VStack(spacing: 0) {
-            MtdToggleRow(title: "Remove location", detail: "GPS position and altitude", isOn: locationBinding)
+            MtdToggleRow(title: "Remove location", detail: "GPS position, altitude and place names", isOn: locationBinding)
                 .disabled(removeAll)
             APHairline()
             MtdToggleRow(
                 title: "Remove camera and device details",
-                detail: "Make, model, lens, software and serial numbers",
+                detail: "Make, model, lens, software, serial numbers, owner and artist names, comments and maker notes",
                 isOn: deviceBinding
             )
             .disabled(removeAll)
@@ -568,13 +605,15 @@ struct MetadataView: View {
         if result.stillHasLocation {
             return "Copy ready, \(size). It still includes the location, as you chose."
         }
-        return "Copy ready, \(size). It has no location inside."
+        return "Copy ready, \(size). No GPS position or place names are left in it."
     }
 
     // MARK: Work
 
     private func loadPhoto() async {
         guard let item = pickerItem else { return }
+        // Clear the picker choice when done, so choosing the same photo again (for example after a failure) still counts.
+        defer { pickerItem = nil }
         result = nil
         failed = false
         report = nil
@@ -596,9 +635,9 @@ struct MetadataView: View {
             all: removeAll
         )
         let format = report.outputFormat
-        let image = photo.image
         let made: MtdResult? = await Task.detached(priority: .userInitiated) { () -> MtdResult? in
-            guard let data = ImageCodec.encode(image, format: format, quality: 0.95, properties: properties) else { return nil }
+            guard let image = photo.decodedImage,
+                  let data = ImageCodec.encode(image, format: format, quality: 0.95, properties: properties) else { return nil }
             let item = ExportItem(data: data, filename: ExportItem.uniqueName("Aperta-clean", format: format), format: format)
             return MtdResult(item: item, stillHasLocation: MtdReader.hasLocation(data))
         }.value

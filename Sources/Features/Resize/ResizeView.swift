@@ -177,6 +177,10 @@ private final class RszModel: ObservableObject {
     @Published var hasRun: Bool = false
 
     func run(photos: [LoadedPhoto], settings: RszSettings?) async {
+        // Clear the old result and show "working" BEFORE the debounce sleep, so a stale file cannot be saved or shared
+        // while the new run waits to start.
+        exportItems = []
+        isWorking = settings != nil && !photos.isEmpty
         do {
             try await Task.sleep(nanoseconds: 400_000_000)
         } catch {
@@ -201,12 +205,13 @@ private final class RszModel: ObservableObject {
 
         var fresh: [UUID: RszOutput] = [:]
         for (index, photo) in photos.enumerated() {
-            let image: CGImage = photo.image
-            let properties: [String: Any] = ImageCodec.privacySafe(photo.properties)
             let jobSettings: RszSettings = settings
             let wantsPreview: Bool = index == 0
             let output: RszOutput? = await Task.detached(priority: .userInitiated) { () -> RszOutput? in
-                RszEngine.process(image, properties: properties, settings: jobSettings, makePreview: wantsPreview)
+                // Decoding happens here, off the main thread. A file that cannot be decoded is a failed photo, never an empty export.
+                guard let image = photo.decodedImage else { return nil }
+                let properties: [String: Any] = ImageCodec.privacySafe(photo.properties)
+                return RszEngine.process(image, properties: properties, settings: jobSettings, makePreview: wantsPreview)
             }.value
             if Task.isCancelled { return }
             if let output {
@@ -308,7 +313,7 @@ struct ResizeView: View {
         .task { if DebugSamples.enabled && selection.photos.isEmpty { selection.photos = DebugSamples.photos(3) } }
         #endif
         .onChange(of: pickerItems) { _, newItems in
-            Task { await selection.load(newItems, maxPixel: 4096) }
+            Task { await selection.load(newItems, maxPixel: PhotoLoader.batchMaxPixel) }
         }
         .onChange(of: firstPhoto?.id) { _, _ in
             fillFieldsFromFirstPhoto()
@@ -684,14 +689,14 @@ struct ResizeView: View {
             Text("\(PhotoListText.photoCount(outputs.count)), \(sizeText)")
                 .font(AP.Font.headline)
                 .foregroundStyle(AP.Palette.paper)
-            Text("About \(ByteText.string(totalBytes)) in total as \(format.title). Location and personal details are removed.")
+            Text("About \(ByteText.string(totalBytes)) in total as \(format.title). The GPS position, place names, serial numbers and owner names are removed.")
                 .font(AP.Font.callout)
                 .foregroundStyle(AP.Palette.mist)
                 .fixedSize(horizontal: false, vertical: true)
             if model.failedCount > 0 {
                 Text(model.failedCount == 1
-                     ? "1 photo could not be resized."
-                     : "\(model.failedCount) photos could not be resized.")
+                     ? "1 photo could not be read or resized and was left out."
+                     : "\(model.failedCount) photos could not be read or resized and were left out.")
                     .font(AP.Font.caption)
                     .foregroundStyle(AP.Palette.danger)
             }
@@ -715,6 +720,7 @@ struct ResizeView: View {
                 .accessibilityLabel(Text("Choose other photos"))
             }
             failedNote
+            PhotoCapNote(photos: selection.photos)
             VStack(spacing: 0) {
                 ForEach(selection.photos) { photo in
                     row(for: photo)
@@ -739,7 +745,7 @@ struct ResizeView: View {
         return PhotoListRow(
             thumbnail: thumbnails.images[photo.id],
             title: photo.name,
-            detail: "\(PhotoListText.pixels(photo.pixelSize)), \(ByteText.string(photo.originalBytes))",
+            detail: "\(photo.sizeText), \(ByteText.string(photo.originalBytes))",
             result: resultText,
             tone: model.isWorking ? .neutral : .good,
             onRemove: removeAction

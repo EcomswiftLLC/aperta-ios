@@ -7,7 +7,7 @@
 **App:** Photo Editor & Collage: Aperta ("Aperta")
 **Company:** Ecom Swift LLC, 30 N Gould St #37906, Sheridan, WY 82801, United States
 **Contact:** support@ecomswiftllc.com
-**Last updated:** November 17, 2026
+**Last updated:** November 18, 2026
 
 This policy explains what Aperta does with information. The short version: your photos are processed on your device and are never uploaded, and the only outside party that receives any data is the advertising service that pays for the app.
 
@@ -17,7 +17,7 @@ This policy explains what Aperta does with information. The short version: your 
 - Your photos are edited, resized, compressed, converted and watermarked on your device. We do not upload them and we cannot see them.
 - Aperta is free and shows ads from Google AdMob. AdMob collects some device and ad data to show and measure ads. You are asked for your consent where the law requires it.
 - We do not run our own analytics, and there are no in-app purchases or subscriptions.
-- Aperta does not track you. The privacy manifest of the app declares that it does not use data for tracking.
+- Aperta itself builds no profile of you. Tracking can happen only through the ads: if you allow tracking when iOS asks, Google's advertising SDK may use your advertising identifier to show and measure ads, and Apple treats that as tracking. If you tap "Ask App Not to Track", it does not. See sections 4 and 5.
 
 ## 2. Photos and other information that stay on your device
 
@@ -55,7 +55,7 @@ Some US state privacy laws treat advertising of this kind as "sharing" or "targe
 ## 5. Your choices about ads and tracking
 
 - **Consent form (EEA, UK and other regions where required).** When you first open the app, a consent form from Google's User Messaging Platform may appear. You can accept, decline or manage your choices. You can reopen it later in Settings, in the Ad privacy choices row, where one is required.
-- **Tracking prompt.** After the consent step, iOS may ask whether Aperta may track you across apps and websites owned by other companies (App Tracking Transparency). If you tap "Ask App Not to Track", the advertising identifier is not shared, and ads you see will be less personalised. The app works the same either way. Aperta does not track you itself: the advertising identifier is used only by Google's SDK, and only if you allow it.
+- **Tracking prompt.** After the consent step, iOS may ask whether Aperta may track you across apps and websites owned by other companies (App Tracking Transparency). If you tap "Ask App Not to Track", the advertising identifier is not shared, and ads you see will be less personalised. The app works the same either way. Aperta itself does not combine your data across other companies' apps and websites. The only tracking that can happen is through Google's advertising SDK, which may use the advertising identifier to show and measure ads, and only if you allow it in the prompt.
 - **iOS settings.** You can change the tracking choice at any time in Settings > Privacy & Security > Tracking, and reset your advertising identifier in the same area.
 - **Ads cannot be switched off inside the app**, because ads are how Aperta is paid for. If you decline a consent form that applies in your region, ads may not load for you. In that case no banner appears, and when you save or share a photo the export goes ahead without an ad.
 - **Report an ad.** If you see an ad that is offensive, misleading or inappropriate, write to support@ecomswiftllc.com. Tell us roughly when and where in the app you saw it and what it showed. A screenshot helps. We review reports and block ad categories or advertisers through Google AdMob where we can.

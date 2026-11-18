@@ -32,7 +32,7 @@ LEGAL = ROOT / "docs" / "legal"
 
 BASE = "https://ecomswiftllc.github.io/aperta/"
 SUPPORT_EMAIL = os.environ.get("APERTA_SUPPORT_EMAIL", "").strip()
-UPDATED = "2026-11-17"
+UPDATED = "2026-11-18"
 SITE_NAME = "Photo Editor & Collage: Aperta"
 
 if not SUPPORT_EMAIL:
@@ -151,7 +151,7 @@ def footer(root):
   <div class="wrap">
     <div>
       <h2>Photo Editor &amp; Collage: Aperta</h2>
-      <p>A free photo editor for iPhone. Your photos are edited on your device. Coming soon to the App Store.</p>
+      <p>A free photo editor for iPhone and iPad. Your photos are edited on your device. Submitted to the App Store, waiting for Apple's review.</p>
     </div>
     <nav aria-label="Footer">
       <h2>Pages</h2>
@@ -167,7 +167,7 @@ def footer(root):
       <p>30 N Gould St #37906<br>Sheridan, WY 82801<br>United States</p>
       <p class="email">{html.escape(SUPPORT_EMAIL)}</p>
     </div>
-    <p class="legalline">&copy; 2026 Ecom Swift LLC. Apple, iPhone and the App Store are trademarks of Apple Inc. Aperta is not affiliated with Apple or Google.</p>
+    <p class="legalline">&copy; 2026 Ecom Swift LLC. Apple, iPhone, iPad and the App Store are trademarks of Apple Inc. Aperta is not affiliated with Apple or Google.</p>
   </div>
 </footer>
 </body>
@@ -190,13 +190,13 @@ FAQ = [
     ("Does it need photo library access?",
      "<p>Not to edit. You pick photos with the iOS photo picker, and Aperta sees only the ones you choose. To save a result, the app asks for add-only permission, which lets it add pictures and does not let it read your library.</p>"),
     ("What happens if I do not allow tracking?",
-     "<p>The app works the same. The ads you see will be less personalised. You can change the choice any time in iOS Settings under Privacy and Security, then Tracking. Aperta does not track you itself.</p>"),
+     "<p>The app works the same. The ads you see will be less personalised. You can change the choice any time in iOS Settings under Privacy and Security, then Tracking. Aperta itself runs no analytics. If you allow tracking, only Google's ad software may use your advertising identifier for ads.</p>"),
     ("Which devices does it run on?",
-     "<p>iPhone with iOS 17 or later.</p>"),
+     "<p>iPhone and iPad with iOS 17 or iPadOS 17 or later.</p>"),
     ("Which file formats can I save?",
      "<p>The editor saves JPG, PNG and HEIC. The Convert tool also makes PDF files from photos.</p>"),
     ("When can I download it?",
-     "<p>Aperta is not released yet. This page will link to the App Store listing once the app is live.</p>"),
+     "<p>Aperta has been submitted to the App Store and is waiting for Apple's review, so there is no download link yet. This page will link to the App Store listing once the app is available.</p>"),
     ("Who makes Aperta?",
      "<p>Ecom Swift LLC, a company registered in Wyoming, United States. You can reach us on the <a href=\"support/\">support page</a>.</p>"),
 ]
@@ -211,7 +211,7 @@ def jsonld_app():
         "url": BASE,
         "applicationCategory": "MultimediaApplication",
         "operatingSystem": "iOS 17.0 or later",
-        "description": "A free photo editor for iPhone. Crop, adjust, filter, remove backgrounds and make collages, and compress, resize, convert and watermark photos, make ID photos and remove location data. Photos are processed on the device. Supported by ads.",
+        "description": "A free photo editor for iPhone and iPad. Crop, adjust, filter, remove backgrounds and make collages, and compress, resize, convert and watermark photos, make ID photos and remove location data. Photos are processed on the device. Supported by ads.",
         "image": BASE + "assets/icon-512.png",
         "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
         "publisher": {"@type": "Organization", "name": "Ecom Swift LLC", "url": "https://www.ecomswiftllc.com/",
@@ -221,7 +221,7 @@ def jsonld_app():
         "featureList": [
             "Crop, straighten, rotate and flip",
             "13 adjustment dials and auto enhance",
-            "25 original filters",
+            "24 filters",
             "Text, stickers, emoji and shapes",
             "Drawing with pen, marker and neon",
             "Blur and pixelate brush",
@@ -244,14 +244,14 @@ def jsonld_faq():
 
 
 def build_index():
-    title = "Photo Editor & Collage: Aperta | Free photo editor for iPhone"
-    desc = "Free photo editor for iPhone. Crop, adjust, filter, remove backgrounds, make collages, resize, compress, convert and watermark photos. Edited on your device, with no account. Coming soon."
+    title = "Photo Editor & Collage: Aperta | Free photo editor for iPhone and iPad"
+    desc = "Free photo editor for iPhone and iPad. Crop, adjust, filter, remove backgrounds, make collages, resize, compress, convert and watermark photos. Edited on your device, with no account."
     faq_html = "\n".join(
         f'        <details><summary>{html.escape(q)}</summary><div class="answer">{a}</div></details>' for q, a in FAQ)
     tools = [
         ("Collage", "Combine two to nine photos in a clean layout."),
-        ("Compress", "Make files smaller without visible loss."),
-        ("Resize", "Set exact sizes, or start from a preset for a social network."),
+        ("Compress", "Make files smaller, with the quality you choose."),
+        ("Resize", "Set exact sizes, or start from a preset for a popular social network."),
         ("Convert", "Change photos between JPG, PNG and HEIC, or turn them into one PDF."),
         ("Watermark", "Add your name as text, or your logo, to many photos at once."),
         ("ID photo", "Make passport and visa photos at the right size, with a print sheet."),
@@ -266,9 +266,9 @@ def build_index():
     <div class="wrap">
       <div>
         <h1 id="h1">A complete photo studio that stays on your phone.</h1>
-        <p class="lede">Aperta edits, combines, resizes and compresses your photos on your iPhone. It is free, there is no account, and every photo is processed on your device.</p>
-        <p class="status">Coming soon to the App Store</p>
-        <p class="small hero-note">The app has not been released yet, so there is no download link. Questions before launch are welcome on the <a href="support/">support page</a>.</p>
+        <p class="lede">Aperta edits, combines, resizes and compresses your photos on your iPhone or iPad. It is free, there is no account, and every photo is processed on your device.</p>
+        <p class="status">Submitted to the App Store, waiting for review</p>
+        <p class="small hero-note">The app is waiting for Apple's review, so there is no download link yet. Questions are welcome on the <a href="support/">support page</a>.</p>
       </div>
       <div class="lens">
         {lens_svg()}
@@ -283,10 +283,10 @@ def build_index():
         <dl class="defs">
           <div><dt>Crop, straighten, rotate and flip</dt><dd>Frame the picture you meant to take, and level a crooked horizon.</dd></div>
           <div><dt>Adjust with 13 dials</dt><dd>Fine control over light, colour and detail, plus auto enhance when you want a quick start.</dd></div>
-          <div><dt>25 original filters</dt><dd>Looks made for Aperta, from subtle to strong.</dd></div>
+          <div><dt>24 filters</dt><dd>17 looks made for Aperta and 7 built on Apple's photo effects, from subtle to strong.</dd></div>
           <div><dt>Text, stickers, emoji and shapes</dt><dd>Add a caption, a label or a detail, and place it where you want it.</dd></div>
           <div><dt>Draw</dt><dd>Sketch or annotate with a pen, a marker or a neon brush.</dd></div>
-          <div><dt>Blur and pixelate brush</dt><dd>Paint over a face, a number plate or an address to hide it.</dd></div>
+          <div><dt>Blur and pixelate brush</dt><dd>Paint over a face, a number plate or an address to soften it. Blur and pixelate reduce detail but cannot promise to hide something, so cover anything sensitive with the draw brush.</dd></div>
           <div><dt>Remove the background</dt><dd>Lift the main subject off its background. It runs on your device with Apple's Vision technology, so the photo is never uploaded.</dd></div>
           <div><dt>Frame and canvas</dt><dd>Add a border or change the canvas around the picture.</dd></div>
           <div><dt>Compare, undo and redo</dt><dd>Compare your edit with the original, step back through your edits, and step forward again.</dd></div>
@@ -344,7 +344,7 @@ def build_index():
             </ul>
           </div>
         </div>
-        <p>Where the law asks for it, the app shows a consent form from Google before personalised ads, and iOS may ask whether the app may track you. Aperta does not track you itself, and you can say no to the iOS prompt and still use everything. Settings has an Ad privacy choices row where one is required.</p>
+        <p>Where the law asks for it, the app shows a consent form from Google before personalised ads, and iOS may ask whether the app may track you. Aperta itself runs no analytics, and the only tracking that can happen is through Google's ad software, and only if you allow it. You can say no to the iOS prompt and still use everything. Settings has an Ad privacy choices row where one is required.</p>
       </div>
     </div>
   </section>
@@ -409,12 +409,12 @@ def build_support():
         <p class="small">Select the address to copy it into your mail app.</p>
         <p>We reply by email. A message gets answered faster when it includes:</p>
         <ul>
-          <li>your iPhone model and iOS version</li>
+          <li>your iPhone or iPad model and iOS or iPadOS version</li>
           <li>what you were doing and what happened</li>
           <li>the tool you were using</li>
           <li>a screenshot, if it helps</li>
         </ul>
-        <p>Aperta is not released yet, so support right now covers questions about the app before launch.</p>
+        <p>Aperta is waiting for Apple's review, so support right now covers questions about the app before it is available.</p>
         <h2>Common questions</h2>
         <div class="faq">
 {faq_html}

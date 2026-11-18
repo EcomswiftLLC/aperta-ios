@@ -133,7 +133,7 @@ private struct PssResult {
 
 // MARK: - Compositing (shared by preview and export)
 
-private enum PssCompositor {
+enum PssCompositor {
     static let dpi: CGFloat = 300
     static let sheetGap: CGFloat = 24
     static let sheetMargin: CGFloat = 48
@@ -330,7 +330,7 @@ struct PassportView: View {
     var body: some View {
         ToolScreen(
             title: "ID and passport photos",
-            subtitle: "Make a photo with a plain background at the right size, ready to print or upload."
+            subtitle: "Make a photo with a plain background at the right size, ready to print or upload. Photo rules differ by country, and Aperta does not check a photo against them."
         ) {
             content
         }
@@ -362,7 +362,7 @@ struct PassportView: View {
         case .loading:
             progressPanel("Opening your photo")
         case .working:
-            progressPanel("Finding you in the photo")
+            progressPanel("Finding the subject")
         case .unreadable:
             problemPanel(
                 message: "That photo could not be opened. Try another one.",
@@ -370,7 +370,7 @@ struct PassportView: View {
             )
         case .noPerson:
             problemPanel(
-                message: "We could not find a person in this photo. Try a photo with your face and shoulders in view.",
+                message: "We could not find a clear subject in this photo. Try a well lit photo of your face and shoulders against a plain background.",
                 showRetry: true
             )
         case .ready:
@@ -791,7 +791,7 @@ struct PassportView: View {
             Image(systemName: "info.circle")
                 .foregroundStyle(AP.Palette.mist)
                 .accessibilityHidden(true)
-            Text("Always check your country's current photo rules before you print.")
+            Text("Each country has its own rules for size, background, expression and head position. Check the current rules of the office that will receive your photo before you print. Aperta cuts out the clearest subject it finds and cannot promise a photo will be accepted.")
                 .font(AP.Font.caption)
                 .foregroundStyle(AP.Palette.mist)
                 .fixedSize(horizontal: false, vertical: true)
@@ -803,6 +803,8 @@ struct PassportView: View {
 
     private func loadAndCut() async {
         guard let item = pickerItem else { return }
+        // Clear the picker choice when done, so choosing the same photo again (for example after a failure) still counts.
+        defer { pickerItem = nil }
         result = nil
         cutout = nil
         cutoutImage = nil
@@ -823,7 +825,15 @@ struct PassportView: View {
         }
         phase = .working
         result = nil
-        let image = photo.image
+        // Decode in the background; a file that cannot be decoded is an unreadable photo, not a blank one.
+        let decoded: CGImage? = await Task.detached(priority: .userInitiated) { () -> CGImage? in
+            photo.decodedImage
+        }.value
+        guard let image = decoded else {
+            phase = .unreadable
+            APHaptics.warning()
+            return
+        }
         guard let lifted = await CutoutService.cutout(image) else {
             phase = .noPerson
             APHaptics.warning()

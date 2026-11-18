@@ -381,42 +381,68 @@ struct CollageView: View {
     private func loadPicked(_ items: [PhotosPickerItem]) async {
         guard !items.isEmpty else { return }
         notice = nil
-        await selection.load(items, maxPixel: 3072)
+        await selection.load(items, maxPixel: PhotoLoader.collageMaxPixel)
         await prepareFromSelection()
     }
 
     private func prepareFromSelection() async {
-        let fulls: [CGImage] = selection.photos.map { $0.image }
-        guard fulls.count >= 2 else {
-            notice = fulls.isEmpty
-                ? "These photos could not be opened. Choose others."
-                : "Choose at least two photos to make a collage."
+        let picked: [LoadedPhoto] = Array(selection.photos.prefix(9))
+        guard picked.count >= 2 || selection.photos.isEmpty else {
+            notice = "Choose at least two photos to make a collage."
+            if !model.photos.isEmpty { model.errorMessage = notice }
+            return
+        }
+        guard !picked.isEmpty else {
+            notice = "These photos could not be opened. Choose others."
             if !model.photos.isEmpty { model.errorMessage = notice }
             return
         }
         isPreparing = true
-        let prepared: [ClgPhoto] = await Task.detached(priority: .userInitiated) { () -> [ClgPhoto] in
-            fulls.prefix(9).map { ClgPhoto(full: $0) }
+        // Decoding the files and making the screen copies both happen in the background. A file that cannot be
+        // decoded is counted and left out, never drawn as an empty cell.
+        let result: (photos: [ClgPhoto], failed: Int) = await Task.detached(priority: .userInitiated) { () -> (photos: [ClgPhoto], failed: Int) in
+            var prepared: [ClgPhoto] = []
+            var failed = 0
+            for photo in picked {
+                if let full = photo.decodedImage {
+                    prepared.append(ClgPhoto(full: full))
+                } else {
+                    failed += 1
+                }
+            }
+            return (prepared, failed)
         }.value
         isPreparing = false
-        model.setPhotos(prepared)
-        if selection.failedCount > 0 {
-            model.errorMessage = selection.failedCount == 1
+        let unopened = selection.failedCount + result.failed
+        guard result.photos.count >= 2 else {
+            notice = result.photos.isEmpty
+                ? "These photos could not be opened. Choose others."
+                : "Only one photo could be opened. Choose at least two photos to make a collage."
+            if !model.photos.isEmpty { model.errorMessage = notice }
+            return
+        }
+        model.setPhotos(result.photos)
+        if unopened > 0 {
+            model.errorMessage = unopened == 1
                 ? "One photo could not be opened and was left out."
-                : "\(selection.failedCount) photos could not be opened and were left out."
+                : "\(unopened) photos could not be opened and were left out."
         }
     }
 
     private func replace(index: Int, with item: PhotosPickerItem) async {
         defer { replaceItem = nil }
-        guard let loaded = await PhotoLoader.load(item, maxPixel: 3072) else {
+        guard let loaded = await PhotoLoader.load(item, maxPixel: PhotoLoader.collageMaxPixel, lazy: true) else {
             model.errorMessage = "That photo could not be opened. Choose another."
             return
         }
-        let full: CGImage = loaded.image
-        let photo: ClgPhoto = await Task.detached(priority: .userInitiated) { () -> ClgPhoto in
-            ClgPhoto(full: full)
+        let photo: ClgPhoto? = await Task.detached(priority: .userInitiated) { () -> ClgPhoto? in
+            guard let full = loaded.decodedImage else { return nil }
+            return ClgPhoto(full: full)
         }.value
+        guard let photo else {
+            model.errorMessage = "That photo could not be opened. Choose another."
+            return
+        }
         model.replacePhoto(at: index, with: photo)
         model.errorMessage = nil
     }

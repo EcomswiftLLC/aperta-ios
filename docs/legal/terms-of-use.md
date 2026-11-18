@@ -7,13 +7,13 @@
 **App:** Photo Editor & Collage: Aperta ("Aperta", "the app")
 **Provider:** Ecom Swift LLC, 30 N Gould St #37906, Sheridan, WY 82801, United States ("we", "us")
 **Contact:** support@ecomswiftllc.com
-**Last updated:** November 17, 2026
+**Last updated:** November 18, 2026
 
 By downloading or using Aperta you agree to these terms. If you do not agree, do not use the app.
 
 ## 1. What Aperta is
 
-Aperta is a photo editor for iPhone. It lets you crop, straighten, adjust, filter, annotate and draw on photos, blur or pixelate parts of them, remove a background, and save the result as JPG, PNG or HEIC. It also includes tools to make collages, compress and resize photos (including social media presets), convert between JPG, PNG, HEIC and PDF, add a text or logo watermark, make ID and passport photos, and view and remove the metadata (such as location) stored in a photo.
+Aperta is a photo editor for iPhone and iPad. It lets you crop, straighten, adjust, filter, annotate and draw on photos, blur or pixelate parts of them, remove a background, and save the result as JPG, PNG or HEIC. It also includes tools to make collages, compress and resize photos (including social media presets), convert between JPG, PNG, HEIC and PDF, add a text or logo watermark, make ID and passport photos, and view and remove the metadata (such as location) stored in a photo.
 
 ## 2. Licence
 

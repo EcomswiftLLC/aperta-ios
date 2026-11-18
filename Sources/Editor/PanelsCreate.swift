@@ -270,7 +270,7 @@ struct BlurPanel: View {
                 }
             }
             .padding(.horizontal, AP.Space.m)
-            Text("Paint over a face, a plate or anything you want to hide or soften.")
+            Text("Paint over a face, a plate or any detail you want to soften. Blur and pixelate reduce detail but cannot promise to hide something, so cover anything sensitive with a Draw stroke.")
                 .font(AP.Font.caption)
                 .foregroundStyle(AP.Palette.mist)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -292,7 +292,7 @@ struct BlurPanel: View {
                         model.state = next
                     }
                 ),
-                range: 0...100,
+                range: EditPipeline.minBlurStrength...100,
                 defaultValue: 60,
                 onEditingChanged: { editing in if editing { model.checkpoint() } }
             )

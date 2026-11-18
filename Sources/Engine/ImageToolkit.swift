@@ -60,39 +60,88 @@ struct LoadedPhoto: Identifiable {
     let name: String
     /// Upright pixel size of `image` (EXIF orientation applied, capped to the size the caller asked for).
     let pixelSize: CGSize
+    /// Upright pixel size of the file as it was picked, before any cap. Equal to `pixelSize` unless the photo was scaled down.
+    let fullPixelSize: CGSize
     private let maxPixel: Int
 
-    init(image: CGImage, originalData: Data, properties: [String: Any], name: String) {
+    init(image: CGImage, originalData: Data, properties: [String: Any], name: String, fullPixelSize: CGSize? = nil) {
         storedImage = image
         self.originalData = originalData
         self.properties = properties
         self.name = name
         pixelSize = CGSize(width: image.width, height: image.height)
+        self.fullPixelSize = fullPixelSize ?? CGSize(width: image.width, height: image.height)
         maxPixel = max(image.width, image.height)
     }
 
-    init(lazyData: Data, properties: [String: Any], name: String, pixelSize: CGSize, maxPixel: Int) {
+    init(lazyData: Data, properties: [String: Any], name: String, pixelSize: CGSize, maxPixel: Int, fullPixelSize: CGSize? = nil) {
         storedImage = nil
         originalData = lazyData
         self.properties = properties
         self.name = name
         self.pixelSize = pixelSize
+        self.fullPixelSize = fullPixelSize ?? pixelSize
         self.maxPixel = maxPixel
     }
 
-    /// Upright pixels (EXIF orientation already applied). For lazily loaded photos this decodes the file each time it is read,
-    /// so read it once per job and let it go.
-    var image: CGImage {
+    /// Upright pixels (EXIF orientation already applied), or nil when a lazily loaded file can no longer be decoded.
+    /// For lazily loaded photos this decodes the file each time it is read, so call it once per job, off the main thread,
+    /// and treat nil as a failed photo. It must never turn into an empty picture that gets exported.
+    var decodedImage: CGImage? {
         if let storedImage { return storedImage }
-        return PhotoLoader.decode(originalData, maxPixel: maxPixel) ?? PhotoLoader.blank
+        return PhotoLoader.decode(originalData, maxPixel: maxPixel)
+    }
+
+    /// Upright pixels for photos that were loaded eagerly (single-photo screens). Prefer `decodedImage` anywhere a failure
+    /// must be reported; this one falls back to a single transparent pixel, which is only safe for on-screen drawing.
+    var image: CGImage { decodedImage ?? PhotoLoader.blank }
+
+    /// A small copy for lists, decoded straight from the file data at the small size (cheap, no full-size bitmap).
+    func thumbnail(maxPixel limit: Int) -> CGImage? {
+        if let storedImage { return ImageCodec.scaled(storedImage, maxPixel: limit) }
+        return PhotoLoader.decode(originalData, maxPixel: min(limit, maxPixel))
     }
 
     var originalBytes: Int { originalData.count }
     var uiImage: UIImage { UIImage(cgImage: image) }
+
+    /// True when the pixels this app works with are fewer than the pixels in the picked file.
+    var isDownscaled: Bool {
+        max(fullPixelSize.width, fullPixelSize.height) > max(pixelSize.width, pixelSize.height) + 0.5
+    }
+
+    /// "4096 × 3072", or "4096 × 3072, scaled down from 8064 × 6048" when the app works on a smaller copy.
+    var sizeText: String {
+        let now = "\(Int(pixelSize.width.rounded())) \u{00D7} \(Int(pixelSize.height.rounded()))"
+        guard isDownscaled else { return now }
+        return "\(now), scaled down from \(Int(fullPixelSize.width.rounded())) \u{00D7} \(Int(fullPixelSize.height.rounded()))"
+    }
+
+    /// Label for the editor's top export size, which never claims "original" for a scaled-down copy.
+    var fullSizeChipTitle: String {
+        guard isDownscaled else { return "Full size" }
+        return "Up to \(Int(max(pixelSize.width, pixelSize.height).rounded())) px"
+    }
 }
 
 enum PhotoLoader {
-    /// A single transparent pixel, only used if a file that decoded once can no longer be read.
+    /// Longest side the batch tools (Compress, Convert, Resize, Watermark) work on. Larger photos are scaled down to this.
+    static let batchMaxPixel = 4096
+    /// Longest side the collage works on.
+    static let collageMaxPixel = 3072
+    /// Longest side the editor opens.
+    static let editorMaxPixel = 6144
+
+    /// Upright pixel size from a file's property dictionary (EXIF orientation applied), before any cap.
+    static func uprightSize(from props: [String: Any]) -> CGSize? {
+        guard let width = (props[kCGImagePropertyPixelWidth as String] as? NSNumber)?.doubleValue,
+              let height = (props[kCGImagePropertyPixelHeight as String] as? NSNumber)?.doubleValue,
+              width > 0, height > 0 else { return nil }
+        let orientation = (props[kCGImagePropertyOrientation as String] as? NSNumber)?.intValue ?? 1
+        return orientation >= 5 && orientation <= 8 ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
+    }
+
+    /// A single transparent pixel, only used by `LoadedPhoto.image` for on-screen drawing. Never exported.
     static let blank: CGImage = {
         let context = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 0,
                                 space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
@@ -121,7 +170,7 @@ enum PhotoLoader {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let image = decode(data, maxPixel: maxPixel) else { return nil }
         let props = (CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any]) ?? [:]
-        return LoadedPhoto(image: image, originalData: data, properties: props, name: name)
+        return LoadedPhoto(image: image, originalData: data, properties: props, name: name, fullPixelSize: uprightSize(from: props))
     }
 
     /// Reads only the header: the pixels are decoded later, one photo at a time, when a tool processes it.
@@ -129,17 +178,14 @@ enum PhotoLoader {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetCount(source) > 0,
               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
-              let width = (props[kCGImagePropertyPixelWidth as String] as? NSNumber)?.doubleValue,
-              let height = (props[kCGImagePropertyPixelHeight as String] as? NSNumber)?.doubleValue,
-              width > 0, height > 0 else { return nil }
-        let orientation = (props[kCGImagePropertyOrientation as String] as? NSNumber)?.intValue ?? 1
-        var size = orientation >= 5 && orientation <= 8 ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
+              let full = uprightSize(from: props) else { return nil }
+        var size = full
         let longest = max(size.width, size.height)
         if longest > Double(maxPixel) {
             let ratio = Double(maxPixel) / longest
             size = CGSize(width: (size.width * ratio).rounded(), height: (size.height * ratio).rounded())
         }
-        return LoadedPhoto(lazyData: data, properties: props, name: name, pixelSize: size, maxPixel: maxPixel)
+        return LoadedPhoto(lazyData: data, properties: props, name: name, pixelSize: size, maxPixel: maxPixel, fullPixelSize: full)
     }
 }
 
@@ -247,25 +293,78 @@ enum ImageCodec {
         return result
     }
 
-    /// Metadata with everything that identifies a person or place removed (GPS, device serial, owner names).
-    static func privacySafe(_ properties: [String: Any]) -> [String: Any] {
-        var result = sanitized(properties)
+    /// The camera makers' private "maker note" dictionaries. They can hold serial numbers, owner names and positions.
+    static let makerNoteDictionaryKeys: [String] = {
+        let keys: [CFString] = [
+            kCGImagePropertyMakerAppleDictionary, kCGImagePropertyMakerCanonDictionary, kCGImagePropertyMakerNikonDictionary,
+            kCGImagePropertyMakerMinoltaDictionary, kCGImagePropertyMakerFujiDictionary, kCGImagePropertyMakerOlympusDictionary,
+            kCGImagePropertyMakerPentaxDictionary,
+        ]
+        return keys.map { $0 as String }
+    }()
+
+    /// Fields of the IPTC dictionary that name a place (city, region, country, sub-location).
+    static let iptcLocationKeys: [String] = {
+        let keys: [CFString] = [
+            kCGImagePropertyIPTCCity, kCGImagePropertyIPTCSubLocation, kCGImagePropertyIPTCProvinceState,
+            kCGImagePropertyIPTCCountryPrimaryLocationCode, kCGImagePropertyIPTCCountryPrimaryLocationName,
+            kCGImagePropertyIPTCContentLocationCode, kCGImagePropertyIPTCContentLocationName,
+        ]
+        return keys.map { $0 as String }
+    }()
+
+    /// Metadata without any place: the GPS dictionary and the place names inside IPTC. Everything else is kept.
+    static func removingLocation(_ properties: [String: Any]) -> [String: Any] {
+        var result = properties
         result.removeValue(forKey: kCGImagePropertyGPSDictionary as String)
-        result.removeValue(forKey: kCGImagePropertyMakerAppleDictionary as String)
+        let iptcKey = kCGImagePropertyIPTCDictionary as String
+        if var iptc = result[iptcKey] as? [String: Any] {
+            for key in iptcLocationKeys { iptc.removeValue(forKey: key) }
+            result[iptcKey] = iptc
+        }
+        return result
+    }
+
+    /// Metadata with the details that identify a person, a device or a place removed: GPS and IPTC places, the whole IPTC and
+    /// maker-note dictionaries, the extra EXIF block (camera and lens serial numbers, owner), the unique image id, comments,
+    /// and artist, copyright, description and computer names. The date, camera model and exposure settings stay.
+    /// XMP is never copied, because files are written again from their pixels.
+    static func privacySafe(_ properties: [String: Any]) -> [String: Any] {
+        var result = removingLocation(sanitized(properties))
+        for key in makerNoteDictionaryKeys { result.removeValue(forKey: key) }
         result.removeValue(forKey: kCGImagePropertyIPTCDictionary as String)
+        result.removeValue(forKey: kCGImagePropertyExifAuxDictionary as String)
         if var exif = result[kCGImagePropertyExifDictionary as String] as? [String: Any] {
-            for key in [
+            let keys: [CFString] = [
                 kCGImagePropertyExifBodySerialNumber, kCGImagePropertyExifLensSerialNumber,
-                kCGImagePropertyExifCameraOwnerName, kCGImagePropertyExifUserComment,
-            ] { exif.removeValue(forKey: key as String) }
+                kCGImagePropertyExifCameraOwnerName, kCGImagePropertyExifUserComment, kCGImagePropertyExifImageUniqueID,
+            ]
+            for key in keys { exif.removeValue(forKey: key as String) }
             result[kCGImagePropertyExifDictionary as String] = exif
         }
         if var tiff = result[kCGImagePropertyTIFFDictionary as String] as? [String: Any] {
-            tiff.removeValue(forKey: kCGImagePropertyTIFFArtist as String)
-            tiff.removeValue(forKey: kCGImagePropertyTIFFHostComputer as String)
+            let keys: [CFString] = [
+                kCGImagePropertyTIFFArtist, kCGImagePropertyTIFFHostComputer,
+                kCGImagePropertyTIFFCopyright, kCGImagePropertyTIFFImageDescription,
+            ]
+            for key in keys { tiff.removeValue(forKey: key as String) }
             result[kCGImagePropertyTIFFDictionary as String] = tiff
         }
+        if var png = result[kCGImagePropertyPNGDictionary as String] as? [String: Any] {
+            let keys: [CFString] = [kCGImagePropertyPNGAuthor, kCGImagePropertyPNGDescription, kCGImagePropertyPNGCopyright]
+            for key in keys { png.removeValue(forKey: key as String) }
+            result[kCGImagePropertyPNGDictionary as String] = png
+        }
         return result
+    }
+
+    /// True when the metadata still names a place: a GPS position or an IPTC place name.
+    static func containsLocation(_ properties: [String: Any]) -> Bool {
+        if let gps = properties[kCGImagePropertyGPSDictionary as String] as? [String: Any], !gps.isEmpty { return true }
+        if let iptc = properties[kCGImagePropertyIPTCDictionary as String] as? [String: Any] {
+            return iptcLocationKeys.contains { iptc[$0] != nil }
+        }
+        return false
     }
 
     static func scaled(_ image: CGImage, to size: CGSize) -> CGImage? {
@@ -344,10 +443,22 @@ struct ExportItem: Identifiable {
 
     var contentType: UTType { format.utType }
 
-    /// Writes the file to the temporary folder so it can be shared.
+    /// Folder for files that are written only so they can be handed to the share sheet.
+    static var shareFolder: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("ApertaShare", isDirectory: true)
+    }
+
+    /// Deletes files left over from earlier shares. Call before writing new ones and when the app starts.
+    static func clearShareFolder() {
+        try? FileManager.default.removeItem(at: shareFolder)
+    }
+
+    /// Writes the file to the temporary share folder so it can be shared. Writing a large file takes time, so call this
+    /// off the main thread. Old share files are removed by `clearShareFolder()`.
     func temporaryURL() -> URL? {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
         do {
+            try FileManager.default.createDirectory(at: ExportItem.shareFolder, withIntermediateDirectories: true)
+            let url = ExportItem.shareFolder.appendingPathComponent(filename)
             try data.write(to: url, options: .atomic)
             return url
         } catch {

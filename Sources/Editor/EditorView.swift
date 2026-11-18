@@ -5,6 +5,7 @@ import UIKit
 struct EditorView: View {
     @StateObject private var model: EditorModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var showExport = false
     @State private var confirmClose = false
 
@@ -29,14 +30,34 @@ struct EditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
-            CanvasView(model: model)
+            if verticalSizeClass == .compact {
+                // iPhone in landscape: the top bar and tool tray already use about 116 pt of a roughly 390 pt screen, so the
+                // tool panel goes in a scrolling column beside the photo and the photo keeps the full remaining height.
+                HStack(spacing: 0) {
+                    CanvasView(model: model)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if let tool = model.tool {
+                        ScrollView(.vertical, showsIndicators: true) {
+                            panel(for: tool)
+                                .padding(.vertical, AP.Space.s)
+                        }
+                        .frame(width: 340)
+                        .frame(maxHeight: .infinity)
+                        .background(AP.Palette.carbon)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
+                }
                 .frame(maxHeight: .infinity)
-            if let tool = model.tool {
-                panel(for: tool)
-                    .padding(.top, AP.Space.s)
-                    .padding(.bottom, AP.Space.s)
-                    .background(AP.Palette.carbon)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else {
+                CanvasView(model: model)
+                    .frame(maxHeight: .infinity)
+                if let tool = model.tool {
+                    panel(for: tool)
+                        .padding(.top, AP.Space.s)
+                        .padding(.bottom, AP.Space.s)
+                        .background(AP.Palette.carbon)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
             toolTray
         }
@@ -154,7 +175,10 @@ struct EditorView: View {
             }
             .padding(.horizontal, AP.Space.s)
         }
-        .frame(height: 64)
+        // Grows with the text size a little (up to a limit), instead of clipping the tool names.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .frame(minHeight: 64)
+        .fixedSize(horizontal: false, vertical: true)
         .background(AP.Palette.lens)
         .overlay(alignment: .top) { APHairline() }
     }
@@ -170,9 +194,11 @@ struct EditorView: View {
                     .font(.system(size: 19, weight: .regular))
                 Text(tool.title)
                     .font(AP.Font.caption)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
             .foregroundStyle(selected ? AP.Palette.brass : AP.Palette.paper.opacity(0.85))
-            .frame(width: 72, height: 56)
+            .frame(minWidth: 72, minHeight: 56)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -190,11 +216,13 @@ struct ExportSheet: View {
     @State private var options = ExportOptions()
     @State private var item: ExportItem?
     @State private var rendering = false
-    @State private var failed = false
+    @State private var failureMessage: String?
 
-    private let sizes: [(title: String, value: Int?)] = [
-        ("Original size", nil), ("2048 px", 2048), ("1080 px", 1080),
-    ]
+    /// The editor opens photos at up to `HomeView.editorMaxPixel` on the long side. For bigger photos the first choice
+    /// says so instead of calling a scaled-down copy "original".
+    private var sizes: [(title: String, value: Int?)] {
+        [(model.photo.fullSizeChipTitle, nil), ("2048 px", 2048), ("1080 px", 1080)]
+    }
 
     var body: some View {
         NavigationStack {
@@ -280,9 +308,10 @@ struct ExportSheet: View {
                 if model.state.background.mode == .transparent && model.cutoutReady && options.format == .jpeg {
                     Text("Saved as PNG to keep transparency").font(AP.Font.caption).foregroundStyle(AP.Palette.mist)
                 }
-            } else if failed {
+            } else if let failureMessage {
                 Image(systemName: "exclamationmark.triangle").foregroundStyle(AP.Palette.danger)
-                Text("Could not prepare the photo. Try a smaller size.").font(AP.Font.callout).foregroundStyle(AP.Palette.danger)
+                Text(failureMessage).font(AP.Font.callout).foregroundStyle(AP.Palette.danger)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(minHeight: 24)
@@ -290,15 +319,19 @@ struct ExportSheet: View {
 
     private func render() async {
         rendering = true
-        failed = false
+        failureMessage = nil
         item = nil
         // Small delay so quick changes of the options do not start a render each time.
         try? await Task.sleep(nanoseconds: 250_000_000)
         if Task.isCancelled { return }
         let result = await model.renderExport(options: options)
         if Task.isCancelled { return }
-        item = result
-        failed = result == nil
+        switch result {
+        case .success(let made):
+            item = made
+        case .failure(let error):
+            failureMessage = error.message
+        }
         rendering = false
     }
 }

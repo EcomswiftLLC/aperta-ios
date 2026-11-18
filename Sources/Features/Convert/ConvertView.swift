@@ -137,18 +137,22 @@ private enum CnvEngine {
         )
     }
 
-    /// One photo per page.
-    static func makePDF(_ photos: [LoadedPhoto], pageSize: CnvPageSize, margin: CGFloat) -> Data {
+    /// One photo per page. A photo that cannot be decoded gets no page and is reported in `failed`, never drawn as a blank page.
+    static func makePDF(_ photos: [LoadedPhoto], pageSize: CnvPageSize, margin: CGFloat) -> (data: Data, failed: Set<UUID>) {
         let format = UIGraphicsPDFRendererFormat()
         format.documentInfo = [
             kCGPDFContextCreator as String: "Aperta",
             kCGPDFContextTitle as String: "Photos",
         ]
         let renderer = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: a4), format: format)
-        return renderer.pdfData { context in
+        var failed = Set<UUID>()
+        let data = renderer.pdfData { context in
             for photo in photos {
                 autoreleasepool {
-                    let image: CGImage = photo.image
+                    guard let image: CGImage = photo.decodedImage else {
+                        failed.insert(photo.id)
+                        return
+                    }
                     let page = pageRect(for: image, pageSize: pageSize, margin: margin)
                     context.beginPage(withBounds: page, pageInfo: [:])
                     let box = page.insetBy(dx: margin, dy: margin)
@@ -158,6 +162,7 @@ private enum CnvEngine {
                 }
             }
         }
+        return (data, failed)
     }
 }
 
@@ -165,6 +170,8 @@ private enum CnvEngine {
 private final class CnvModel: ObservableObject {
     @Published var results: [UUID: CnvResult] = [:]
     @Published var pdfData: Data?
+    /// Photos that could not be read and so have no page in the PDF.
+    @Published var pdfFailedIDs: Set<UUID> = []
     @Published var completed: Int = 0
     @Published var total: Int = 0
     @Published var isWorking: Bool = false
@@ -174,6 +181,12 @@ private final class CnvModel: ObservableObject {
     @Published var hasRun: Bool = false
 
     func run(photos: [LoadedPhoto], settings: CnvSettings) async {
+        // Clear the old result and show "working" BEFORE the debounce sleep, so a stale file cannot be saved or shared
+        // while the new run waits to start.
+        exportItems = []
+        pdfData = nil
+        pdfFailedIDs = []
+        isWorking = !photos.isEmpty
         do {
             try await Task.sleep(nanoseconds: 400_000_000)
         } catch {
@@ -208,14 +221,16 @@ private final class CnvModel: ObservableObject {
     private func buildPDF(photos: [LoadedPhoto], settings: CnvSettings) async {
         let pageSize: CnvPageSize = settings.pageSize
         let margin = CGFloat(settings.margin)
-        let data: Data = await Task.detached(priority: .userInitiated) { () -> Data in
+        let built: (data: Data, failed: Set<UUID>) = await Task.detached(priority: .userInitiated) { () -> (data: Data, failed: Set<UUID>) in
             CnvEngine.makePDF(photos, pageSize: pageSize, margin: margin)
         }.value
         if Task.isCancelled { return }
         completed = photos.count
         results = [:]
-        pdfData = data.isEmpty ? nil : data
-        if data.isEmpty { failedCount = photos.count }
+        let allFailed = built.failed.count >= photos.count
+        pdfData = (built.data.isEmpty || allFailed) ? nil : built.data
+        pdfFailedIDs = built.failed
+        failedCount = (built.data.isEmpty || allFailed) ? photos.count : built.failed.count
         hasRun = true
         isWorking = false
     }
@@ -223,11 +238,13 @@ private final class CnvModel: ObservableObject {
     private func convertImages(photos: [LoadedPhoto], settings: CnvSettings, format: OutputFormat) async {
         var fresh: [UUID: CnvResult] = [:]
         for photo in photos {
-            let image: CGImage = photo.image
-            let properties: [String: Any]? = settings.keepMetadata ? ImageCodec.privacySafe(photo.properties) : nil
             let quality: Int = settings.quality
+            let keepMetadata: Bool = settings.keepMetadata
             let result: CnvResult? = await Task.detached(priority: .userInitiated) { () -> CnvResult? in
-                CnvEngine.convert(image, format: format, quality: quality, properties: properties)
+                // Decoding happens here, off the main thread. A file that cannot be decoded is a failed photo, never an empty export.
+                guard let image = photo.decodedImage else { return nil }
+                let properties: [String: Any]? = keepMetadata ? ImageCodec.privacySafe(photo.properties) : nil
+                return CnvEngine.convert(image, format: format, quality: quality, properties: properties)
             }.value
             if Task.isCancelled { return }
             if let result {
@@ -304,14 +321,27 @@ private struct CnvPDFShareButton: View {
     private func share() {
         guard let data else { return }
         let stamp = Int(Date().timeIntervalSince1970 * 1000) % 100_000_000
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Aperta-photos-\(stamp).pdf")
-        do {
-            try data.write(to: url, options: .atomic)
-            errorText = nil
-            shareURL = url
-            showShare = true
-        } catch {
-            errorText = "Could not prepare the PDF. Try again."
+        let name = "Aperta-photos-\(stamp).pdf"
+        Task {
+            // Writing a large PDF takes a moment, so it happens off the main thread.
+            let url: URL? = await Task.detached(priority: .userInitiated) { () -> URL? in
+                ExportItem.clearShareFolder()
+                do {
+                    try FileManager.default.createDirectory(at: ExportItem.shareFolder, withIntermediateDirectories: true)
+                    let target = ExportItem.shareFolder.appendingPathComponent(name)
+                    try data.write(to: target, options: .atomic)
+                    return target
+                } catch {
+                    return nil
+                }
+            }.value
+            if let url {
+                errorText = nil
+                shareURL = url
+                showShare = true
+            } else {
+                errorText = "Could not prepare the PDF. Try again."
+            }
         }
     }
 }
@@ -359,7 +389,7 @@ struct ConvertView: View {
         .task { if DebugSamples.enabled && selection.photos.isEmpty { selection.photos = DebugSamples.photos(3) } }
         #endif
         .onChange(of: pickerItems) { _, newItems in
-            Task { await selection.load(newItems, maxPixel: 4096) }
+            Task { await selection.load(newItems, maxPixel: PhotoLoader.batchMaxPixel) }
         }
         .task(id: photoIDs) {
             await prepareThumbnails()
@@ -470,7 +500,7 @@ struct ConvertView: View {
             if let format = target.imageFormat, format.usesQuality {
                 DialSlider(title: "Quality", value: $quality, range: 10...100, defaultValue: 90, unit: "%")
             } else {
-                Text("PNG keeps every pixel exactly. Files are larger than JPG or HEIC.")
+                Text("PNG does not lose quality when it is saved. Files are larger than JPG or HEIC.")
                     .font(AP.Font.caption)
                     .foregroundStyle(AP.Palette.mist)
                     .fixedSize(horizontal: false, vertical: true)
@@ -480,7 +510,7 @@ struct ConvertView: View {
                     Text("Keep camera details")
                         .font(AP.Font.body)
                         .foregroundStyle(AP.Palette.paper)
-                    Text("Date, camera and lens settings. Location and personal data are always removed.")
+                    Text("Date and camera settings. The GPS position and place names, serial numbers, owner and artist names and comments are always removed.")
                         .font(AP.Font.caption)
                         .foregroundStyle(AP.Palette.mist)
                         .fixedSize(horizontal: false, vertical: true)
@@ -559,9 +589,13 @@ struct ConvertView: View {
         let detail: String
         if target == .pdf {
             if let data = model.pdfData {
-                let pages = selection.photos.count
+                let pages = selection.photos.count - model.pdfFailedIDs.count
                 headline = "PDF, \(pages == 1 ? "1 page" : "\(pages) pages"), \(ByteText.string(data.count))"
-                detail = "Made from \(PhotoListText.photoCount(pages)), \(ByteText.string(before)) in total."
+                if model.pdfFailedIDs.isEmpty {
+                    detail = "Made from \(PhotoListText.photoCount(pages)), \(ByteText.string(before)) in total."
+                } else {
+                    detail = "\(model.pdfFailedIDs.count) could not be read and \(model.pdfFailedIDs.count == 1 ? "has" : "have") no page."
+                }
             } else {
                 headline = "The PDF could not be made"
                 detail = "Try fewer photos, or choose them again."
@@ -571,7 +605,7 @@ struct ConvertView: View {
             let after: Int = results.reduce(0) { $0 + $1.data.count }
             headline = "\(PhotoListText.photoCount(results.count)) as \(target.title), \(ByteText.string(before)) to \(ByteText.string(after))"
             detail = model.failedCount > 0
-                ? "\(model.failedCount) could not be converted and will be left out."
+                ? "\(model.failedCount) could not be read or converted and will be left out."
                 : "Ready to save or share."
         }
         return VStack(alignment: .leading, spacing: AP.Space.xs) {
@@ -581,7 +615,7 @@ struct ConvertView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Text(detail)
                 .font(AP.Font.callout)
-                .foregroundStyle(model.failedCount > 0 ? AP.Palette.danger : AP.Palette.mist)
+                .foregroundStyle((model.failedCount > 0 || !model.pdfFailedIDs.isEmpty) ? AP.Palette.danger : AP.Palette.mist)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
@@ -603,6 +637,7 @@ struct ConvertView: View {
                 .accessibilityLabel(Text("Choose other photos"))
             }
             failedNote
+            PhotoCapNote(photos: selection.photos)
             VStack(spacing: 0) {
                 ForEach(Array(selection.photos.enumerated()), id: \.element.id) { index, photo in
                     row(for: photo, index: index)
@@ -617,7 +652,14 @@ struct ConvertView: View {
         let before: String = "\(sourceName), \(ByteText.string(photo.originalBytes))"
         var resultText: String? = nil
         if target == .pdf {
-            if model.pdfData != nil { resultText = "\(before) to page \(index + 1)" }
+            if model.pdfData != nil {
+                if model.pdfFailedIDs.contains(photo.id) {
+                    resultText = "\(before), could not be read, no page"
+                } else {
+                    let skipped = selection.photos.prefix(index).filter { model.pdfFailedIDs.contains($0.id) }.count
+                    resultText = "\(before) to page \(index + 1 - skipped)"
+                }
+            }
         } else if let result = model.results[photo.id] {
             resultText = "\(before) to \(result.format.title), \(ByteText.string(result.data.count))"
         }
@@ -630,7 +672,7 @@ struct ConvertView: View {
         return PhotoListRow(
             thumbnail: thumbnails.images[photo.id],
             title: photo.name,
-            detail: "\(before), \(PhotoListText.pixels(photo.pixelSize))",
+            detail: "\(before), \(photo.sizeText)",
             result: resultText,
             tone: model.isWorking ? .neutral : .good,
             onRemove: removeAction

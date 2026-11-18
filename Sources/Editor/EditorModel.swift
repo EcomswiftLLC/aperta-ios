@@ -285,24 +285,41 @@ final class EditorModel: ObservableObject {
         return nil
     }
 
+    // MARK: Blur strokes
+
+    /// Where a point on the finished picture (fractions of crop + frame) lands on the source picture. Blur strokes are kept
+    /// in source coordinates so they stay on the same pixels when the crop, turn or frame changes later.
+    func sourcePoint(forCanvasPoint point: CGPoint) -> CGPoint {
+        StrokeSpace.sourcePoint(point, source: proxy.extent.size, crop: state.crop, frame: state.frame)
+    }
+
+    /// A blur brush width (fraction of the finished picture's shorter side) as a fraction of the source's shorter side.
+    func sourceBrushWidth(_ width: Double) -> Double {
+        StrokeSpace.sourceWidth(width, source: proxy.extent.size, crop: state.crop, frame: state.frame)
+    }
+
     // MARK: Export
 
-    /// Renders the finished picture at full size (or the chosen size) and encodes it.
-    func renderExport(options: ExportOptions) async -> ExportItem? {
+    /// Renders the finished picture at full size (or the chosen size) and encodes it. Never returns a picture that is
+    /// missing something the person added: a text, sticker or cutout that cannot be rendered is an error.
+    func renderExport(options: ExportOptions) async -> Result<ExportItem, ExportRenderError> {
         let snapshot = state
         var format = options.format
         let needsAlpha = snapshot.background.mode == .transparent && cutoutReady
         if needsAlpha && format == .jpeg { format = .png }
 
         var mask: CIImage?
-        if cutoutReady && snapshot.background.mode != .original { mask = await fullMask() }
+        if cutoutReady && snapshot.background.mode != .original {
+            mask = await fullMask()
+            if mask == nil { return .failure(.cutoutFailed) }
+        }
 
         let sourceImage = source
         let cgOptional: CGImage? = await Task.detached(priority: .userInitiated) { () -> CGImage? in
             let ci = EditPipeline.shared.render(source: sourceImage, mask: mask, state: snapshot, applyCrop: true)
             return EditPipeline.shared.cgImage(ci)
         }.value
-        guard var cg = cgOptional else { return nil }
+        guard var cg = cgOptional else { return .failure(.renderFailed) }
 
         if let limit = options.maxLongSide, let smaller = ImageCodec.scaled(cg, maxPixel: limit) { cg = smaller }
 
@@ -316,11 +333,30 @@ final class EditorModel: ObservableObject {
             let renderer = ImageRenderer(content: content)
             renderer.scale = 1
             renderer.isOpaque = !needsAlpha
-            if let composed = renderer.uiImage?.cgImage { cg = composed }
+            guard let composed = renderer.uiImage?.cgImage else { return .failure(.overlaysFailed) }
+            cg = composed
         }
 
         let properties = ImageCodec.privacySafe(photo.properties)
-        guard let data = ImageCodec.encode(cg, format: format, quality: options.quality, properties: properties) else { return nil }
-        return ExportItem(data: data, filename: ExportItem.uniqueName("Aperta", format: format), format: format)
+        guard let data = ImageCodec.encode(cg, format: format, quality: options.quality, properties: properties) else {
+            return .failure(.encodeFailed)
+        }
+        return .success(ExportItem(data: data, filename: ExportItem.uniqueName("Aperta", format: format), format: format))
+    }
+}
+
+/// Why an export could not be made. Each case has wording the person can act on.
+enum ExportRenderError: Error, Equatable {
+    case cutoutFailed, renderFailed, overlaysFailed, encodeFailed
+
+    var message: String {
+        switch self {
+        case .cutoutFailed:
+            return "The background cutout could not be repeated at this size, so nothing was saved. Try a smaller size, or turn the cutout off."
+        case .overlaysFailed:
+            return "Your text, stickers or drawing could not be added at this size, so nothing was saved. Try a smaller size."
+        case .renderFailed, .encodeFailed:
+            return "Could not prepare the photo. Try a smaller size."
+        }
     }
 }

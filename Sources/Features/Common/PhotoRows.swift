@@ -13,15 +13,29 @@ final class PhotoListThumbnails: ObservableObject {
         images = images.filter { keep.contains($0.key) }
         let missing: [LoadedPhoto] = photos.filter { images[$0.id] == nil }
         for photo in missing {
-            let source: CGImage = photo.image
             let limit: Int = maxPixel
+            // The small copy is decoded straight from the file data in the background, never as a full-size bitmap on the main thread.
             let small: CGImage? = await Task.detached(priority: .utility) { () -> CGImage? in
-                ImageCodec.scaled(source, maxPixel: limit)
+                photo.thumbnail(maxPixel: limit)
             }.value
             if Task.isCancelled { return }
             if let small {
                 images[photo.id] = UIImage(cgImage: small)
             }
+        }
+    }
+}
+
+/// One line under a tool's photo list when some photos are bigger than the tools work on. Shows nothing otherwise.
+struct PhotoCapNote: View {
+    let photos: [LoadedPhoto]
+
+    var body: some View {
+        if photos.contains(where: { $0.isDownscaled }) {
+            Text("Photos larger than \(PhotoLoader.batchMaxPixel) px on the long side are scaled down to \(PhotoLoader.batchMaxPixel) px before they are processed.")
+                .font(AP.Font.caption)
+                .foregroundStyle(AP.Palette.mist)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

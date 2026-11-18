@@ -106,7 +106,7 @@ struct OnboardingView: View {
                 APHairline()
                 line("slider.horizontal.3", "Edit with precise dials", "Light, colour, crop, filters, text and more.")
                 APHairline()
-                line("person.crop.circle.dashed", "Remove backgrounds", "Found on your device, in a second.")
+                line("person.crop.circle.dashed", "Remove backgrounds", "Found on your device, usually within a few seconds.")
                 APHairline()
                 line("lock", "Private by design", "Photos are never uploaded.")
                 APHairline()

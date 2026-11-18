@@ -7,6 +7,8 @@ struct ApertaApp: App {
 
     init() {
         APAppearance.configure()
+        // Files written only for the share sheet in an earlier session are no longer needed.
+        ExportItem.clearShareFolder()
     }
 
     var body: some Scene {

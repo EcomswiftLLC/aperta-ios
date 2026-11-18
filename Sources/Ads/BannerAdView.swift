@@ -16,6 +16,9 @@ struct BannerSlotLogic: Equatable {
 
     static let maxRetries = 3
     static let retryDelay: TimeInterval = 60
+    /// A banner is requested again only when the width moved by at least this many points (a rotation or a split-view
+    /// resize does; a 1 pt layout wobble does not), so layout churn cannot cause a stream of ad requests.
+    static let minWidthChange: CGFloat = 16
 
     private(set) var status: Status = .idle
     private(set) var width: CGFloat = 0
@@ -25,9 +28,11 @@ struct BannerSlotLogic: Equatable {
     var isShowing: Bool { status == .loaded }
 
     /// Returns true when a new request must be sent for the new width (B7: the status is reset).
+    /// The first width always counts; later ones only when they differ enough (see `minWidthChange`).
     mutating func widthChanged(to newWidth: CGFloat) -> Bool {
         let rounded = newWidth.rounded(.down)
-        guard rounded >= 1, abs(rounded - width) >= 1 else { return false }
+        guard rounded >= 1 else { return false }
+        if width >= 1, abs(rounded - width) < Self.minWidthChange { return false }
         width = rounded
         status = .loading
         hasLoadedAd = false

@@ -11,6 +11,7 @@ struct ExportBar: View {
     @State private var status: Status = .idle
     @State private var shareURLs: [URL] = []
     @State private var showShare = false
+    @State private var showSettingsButton = false
 
     private enum Status: Equatable {
         case idle, saving
@@ -50,6 +51,11 @@ struct ExportBar: View {
                 .presentationDetents([.medium, .large])
                 .ignoresSafeArea()
         }
+        // A new result replaces the old one, so an earlier "Saved" line must not stay on screen.
+        .onChange(of: items.map { $0.id }) { _, _ in
+            if status != .saving { status = .idle }
+            showSettingsButton = false
+        }
     }
 
     @ViewBuilder
@@ -61,6 +67,13 @@ struct ExportBar: View {
         case .failed(let text):
             Label(text, systemImage: "exclamationmark.triangle.fill")
                 .font(AP.Font.label).foregroundStyle(AP.Palette.danger)
+            if showSettingsButton {
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                }
+                .buttonStyle(.apSecondary)
+                .accessibilityHint(Text("Opens the Aperta page in the Settings app to allow adding photos"))
+            }
         default:
             EmptyView()
         }
@@ -68,6 +81,7 @@ struct ExportBar: View {
 
     private func save() async {
         status = .saving
+        showSettingsButton = false
         do {
             try await LibrarySaver.save(items)
             APHaptics.success()
@@ -75,19 +89,28 @@ struct ExportBar: View {
             status = .saved(text)
         } catch LibrarySaver.SaveError.denied {
             status = .failed("Allow Photos access in Settings to save. You can still share.")
+            showSettingsButton = true
         } catch {
             status = .failed("Could not save. Try again, or share the file instead.")
         }
     }
 
     private func share() {
-        let urls = items.compactMap { $0.temporaryURL() }
-        guard !urls.isEmpty else {
-            status = .failed("Could not prepare the file to share.")
-            return
+        let files = items
+        Task {
+            // Writing the files can take a moment for large photos, so it happens off the main thread.
+            let urls: [URL] = await Task.detached(priority: .userInitiated) { () -> [URL] in
+                ExportItem.clearShareFolder()
+                return files.compactMap { $0.temporaryURL() }
+            }.value
+            guard !urls.isEmpty else {
+                status = .failed("Could not prepare the file to share.")
+                showSettingsButton = false
+                return
+            }
+            shareURLs = urls
+            showShare = true
         }
-        shareURLs = urls
-        showShare = true
     }
 }
 

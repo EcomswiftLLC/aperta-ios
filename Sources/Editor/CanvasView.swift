@@ -145,7 +145,12 @@ struct BrushCapture: View {
             next.strokes.append(stroke)
             model.state = next
         case .blur:
-            let stroke = BlurStroke(points: [point], width: model.blurWidth, mode: model.blurMode)
+            // Blur strokes are stored on the source picture, so they stay put when the crop, turn or frame changes.
+            let stroke = BlurStroke(
+                points: [model.sourcePoint(forCanvasPoint: point)],
+                width: model.sourceBrushWidth(model.blurWidth),
+                mode: model.blurMode
+            )
             activeID = stroke.id
             var next = model.state
             next.blurs.append(stroke)
@@ -162,8 +167,9 @@ struct BrushCapture: View {
             next.strokes[index].points.append(point)
         case .blur:
             guard let index = next.blurs.firstIndex(where: { $0.id == id }) else { return }
-            if let last = next.blurs[index].points.last, hypot(last.x - point.x, last.y - point.y) < 0.004 { return }
-            next.blurs[index].points.append(point)
+            let sourcePoint = model.sourcePoint(forCanvasPoint: point)
+            if let last = next.blurs[index].points.last, hypot(last.x - sourcePoint.x, last.y - sourcePoint.y) < 0.0015 { return }
+            next.blurs[index].points.append(sourcePoint)
         }
         model.state = next
     }

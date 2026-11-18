@@ -9,6 +9,23 @@ enum APSwatches {
     static let colors: [UInt32] = [
         0xFFFFFF, 0x0C0D0F, 0xD2AE6E, 0xE5534B, 0xF2A33A, 0xF6D860, 0x5CB85C, 0x3FA7D6, 0x7A5CFA, 0xF08FC0,
     ]
+
+    /// Spoken name of a swatch, so VoiceOver says "Gold" and not a hex code.
+    static func name(for hex: UInt32) -> String {
+        switch hex {
+        case 0xFFFFFF: return "White"
+        case 0x0C0D0F: return "Black"
+        case 0xD2AE6E: return "Gold"
+        case 0xE5534B: return "Red"
+        case 0xF2A33A: return "Orange"
+        case 0xF6D860: return "Yellow"
+        case 0x5CB85C: return "Green"
+        case 0x3FA7D6: return "Blue"
+        case 0x7A5CFA: return "Purple"
+        case 0xF08FC0: return "Pink"
+        default: return "Custom colour"
+        }
+    }
 }
 
 struct SwatchRow: View {
@@ -35,7 +52,7 @@ struct SwatchRow: View {
                             .frame(width: 44, height: 44)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(Text("Colour \(String(hex, radix: 16, uppercase: true))"))
+                    .accessibilityLabel(Text(APSwatches.name(for: hex)))
                     .accessibilityAddTraits(selected == hex ? .isSelected : [])
                 }
                 if allowsCustom {

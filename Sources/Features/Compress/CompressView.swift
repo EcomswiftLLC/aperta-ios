@@ -85,6 +85,10 @@ private final class CmpModel: ObservableObject {
 
     /// Called from `.task(id:)`, so a settings change cancels the previous run. The short sleep is the debounce.
     func run(photos: [LoadedPhoto], settings: CmpSettings) async {
+        // The old result is no longer valid the moment a setting changes. Clear it and show "working" BEFORE the debounce
+        // sleep, so a stale file can never be saved or shared while the new run is still waiting to start.
+        exportItems = []
+        isWorking = !photos.isEmpty
         do {
             try await Task.sleep(nanoseconds: 400_000_000)
         } catch {
@@ -108,14 +112,14 @@ private final class CmpModel: ObservableObject {
 
         var fresh: [UUID: CmpResult] = [:]
         for photo in photos {
-            let image: CGImage = photo.image
-            let properties: [String: Any] = settings.removePrivate
-                ? ImageCodec.privacySafe(photo.properties)
-                : photo.properties
-            let originalBytes: Int = photo.originalBytes
             let jobSettings: CmpSettings = settings
             let result: CmpResult? = await Task.detached(priority: .userInitiated) { () -> CmpResult? in
-                CmpEngine.compress(image, properties: properties, settings: jobSettings, originalBytes: originalBytes)
+                // Decoding happens here, off the main thread. A file that cannot be decoded is a failed photo, never an empty export.
+                guard let image = photo.decodedImage else { return nil }
+                let properties: [String: Any] = jobSettings.removePrivate
+                    ? ImageCodec.privacySafe(photo.properties)
+                    : photo.properties
+                return CmpEngine.compress(image, properties: properties, settings: jobSettings, originalBytes: photo.originalBytes)
             }.value
             if Task.isCancelled { return }
             if let result {
@@ -185,7 +189,7 @@ struct CompressView: View {
         .task { if DebugSamples.enabled && selection.photos.isEmpty { selection.photos = DebugSamples.photos(3); quality = 45 } }
         #endif
         .onChange(of: pickerItems) { _, newItems in
-            Task { await selection.load(newItems, maxPixel: 4096) }
+            Task { await selection.load(newItems, maxPixel: PhotoLoader.batchMaxPixel) }
         }
         .task(id: photoIDs) {
             await prepareThumbnails()
@@ -316,7 +320,7 @@ struct CompressView: View {
         case .quality:
             VStack(alignment: .leading, spacing: AP.Space.xs) {
                 DialSlider(title: "Quality", value: $quality, range: 10...100, defaultValue: 75, unit: "%")
-                Text("75% looks the same as the original for most photos.")
+                Text("75% is a good balance of size and quality for most photos.")
                     .font(AP.Font.caption)
                     .foregroundStyle(AP.Palette.mist)
             }
@@ -334,10 +338,10 @@ struct CompressView: View {
     private var privacyToggle: some View {
         Toggle(isOn: $removePrivate) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Remove location and personal data")
+                Text("Remove location and identifying details")
                     .font(AP.Font.body)
                     .foregroundStyle(AP.Palette.paper)
-                Text("Removes where the photo was taken, camera serial numbers and owner names.")
+                Text("Removes the GPS position and place names, camera and lens serial numbers, owner and artist names, comments and maker notes. The date and camera settings stay.")
                     .font(AP.Font.caption)
                     .foregroundStyle(AP.Palette.mist)
                     .fixedSize(horizontal: false, vertical: true)
@@ -400,8 +404,8 @@ struct CompressView: View {
                 .fixedSize(horizontal: false, vertical: true)
             if model.failedCount > 0 {
                 Text(model.failedCount == 1
-                     ? "1 photo could not be compressed in this format."
-                     : "\(model.failedCount) photos could not be compressed in this format.")
+                     ? "1 photo could not be read or compressed in this format and was left out."
+                     : "\(model.failedCount) photos could not be read or compressed in this format and were left out.")
                     .font(AP.Font.caption)
                     .foregroundStyle(AP.Palette.danger)
             }
@@ -425,6 +429,7 @@ struct CompressView: View {
                 .accessibilityLabel(Text("Choose other photos"))
             }
             failedNote
+            PhotoCapNote(photos: selection.photos)
             VStack(spacing: 0) {
                 ForEach(selection.photos) { photo in
                     row(for: photo)
@@ -457,7 +462,7 @@ struct CompressView: View {
         return PhotoListRow(
             thumbnail: thumbnails.images[photo.id],
             title: photo.name,
-            detail: "\(ByteText.string(photo.originalBytes)), \(PhotoListText.pixels(photo.pixelSize))",
+            detail: "\(ByteText.string(photo.originalBytes)), \(photo.sizeText)",
             result: resultText,
             tone: tone,
             onRemove: removeAction

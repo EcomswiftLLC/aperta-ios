@@ -260,7 +260,9 @@ enum WmkExporter {
         var items: [ExportItem] = []
         for (index, photo) in photos.enumerated() {
             let item: ExportItem? = autoreleasepool { () -> ExportItem? in
-                guard let rendered = WmkRenderer.render(photo: photo.image, config: config) else { return nil }
+                // A photo that cannot be decoded is left out and counted as failed, never exported as an empty picture.
+                guard let decoded = photo.decodedImage,
+                      let rendered = WmkRenderer.render(photo: decoded, config: config) else { return nil }
                 let properties: [String: Any] = removePrivate
                     ? ImageCodec.privacySafe(photo.properties)
                     : ImageCodec.sanitized(photo.properties)
@@ -345,7 +347,7 @@ struct WatermarkView: View {
         #endif
         .onChange(of: pickerItems) {
             let items = pickerItems
-            Task { await selection.load(items, maxPixel: 4096) }
+            Task { await selection.load(items, maxPixel: PhotoLoader.batchMaxPixel) }
         }
         .onChange(of: logoItem) {
             Task { await loadLogo() }
@@ -444,6 +446,7 @@ struct WatermarkView: View {
             if selection.failedCount > 0 {
                 failureText("Some photos could not be opened and were left out.")
             }
+            PhotoCapNote(photos: selection.photos)
         }
         .padding(AP.Space.m)
         .background(AP.Palette.carbon, in: RoundedRectangle(cornerRadius: AP.Radius.panel, style: .continuous))
@@ -732,12 +735,13 @@ struct WatermarkView: View {
             .padding(.horizontal, -AP.Space.m)
             Toggle(isOn: $removePrivate) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Remove location and device details")
+                    Text("Remove location and identifying details")
                         .font(AP.Font.body)
                         .foregroundStyle(AP.Palette.paper)
-                    Text("Recommended for photos you post online.")
+                    Text("Removes the GPS position and place names, serial numbers, owner and artist names and comments. Recommended for photos you post online.")
                         .font(AP.Font.caption)
                         .foregroundStyle(AP.Palette.mist)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .tint(AP.Palette.brass)
@@ -792,9 +796,9 @@ struct WatermarkView: View {
         if let cached = previewBase, cached.id == first.id {
             base = cached.image
         } else {
-            let source = first.image
+            // Decode and shrink in the background, so a large photo never blocks the main thread.
             let scaled: CGImage? = await Task.detached(priority: .userInitiated) { () -> CGImage? in
-                ImageCodec.scaled(source, maxPixel: 1600)
+                first.thumbnail(maxPixel: 1600)
             }.value
             guard let scaled else { return }
             previewBase = WmkPreviewBase(id: first.id, image: scaled)
