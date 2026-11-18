@@ -1,5 +1,12 @@
 import SwiftUI
 
+extension View {
+    /// On iPad, keeps reading content a comfortable width and centred. On iPhone it changes nothing.
+    func readableWidth(_ width: CGFloat = 680) -> some View {
+        frame(maxWidth: width).frame(maxWidth: .infinity)
+    }
+}
+
 /// Common frame for the tool screens (Compress, Resize, Convert, ...): scrolling content on the app background,
 /// a headline, and an inline navigation title. Put the tool's own controls inside `content`.
 struct ToolScreen<Content: View>: View {
@@ -16,6 +23,7 @@ struct ToolScreen<Content: View>: View {
             .padding(.horizontal, AP.Space.m)
             .padding(.top, AP.Space.s)
             .padding(.bottom, AP.Space.xxl)
+            .readableWidth()
         }
         .scrollIndicators(.hidden)
         .apScreen()

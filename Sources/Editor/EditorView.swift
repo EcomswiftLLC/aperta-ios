@@ -208,6 +208,7 @@ struct ExportSheet: View {
                 }
                 .padding(.horizontal, AP.Space.m)
                 .padding(.bottom, AP.Space.xl)
+                .readableWidth()
             }
             .apScreen()
             .navigationBarTitleDisplayMode(.inline)

@@ -73,6 +73,7 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, AP.Space.m)
                 .padding(.bottom, AP.Space.xl)
+                .readableWidth(640)
             }
             .scrollIndicators(.hidden)
             .apScreen()
@@ -134,7 +135,7 @@ struct HomeView: View {
                 Text("Your photos,\nfinished.")
                     .apDisplay(46)
                     .lineSpacing(-2)
-                Text("Edit, combine and resize right on your phone. Nothing is uploaded.")
+                Text("Edit, combine and resize right on your device. Nothing is uploaded.")
                     .font(AP.Font.body)
                     .foregroundStyle(AP.Palette.mist)
                     .frame(maxWidth: 320, alignment: .leading)

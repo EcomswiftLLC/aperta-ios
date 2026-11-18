@@ -328,7 +328,7 @@ struct WatermarkView: View {
     var body: some View {
         ToolScreen(
             title: "Watermark",
-            subtitle: "Add your name or logo to up to 20 photos at once. Your photos never leave this phone."
+            subtitle: "Add your name or logo to up to 20 photos at once. Your photos never leave this device."
         ) {
             if selection.photos.isEmpty {
                 emptyState

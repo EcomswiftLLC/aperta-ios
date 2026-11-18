@@ -458,7 +458,7 @@ struct PassportView: View {
             Text(text)
                 .font(AP.Font.callout)
                 .foregroundStyle(AP.Palette.mist)
-            Text("This happens on your phone and takes a few seconds.")
+            Text("This happens on your device and takes a few seconds.")
                 .font(AP.Font.caption)
                 .foregroundStyle(AP.Palette.mist)
                 .multilineTextAlignment(.center)

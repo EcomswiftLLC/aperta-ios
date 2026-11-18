@@ -177,7 +177,7 @@ struct CompressView: View {
     var body: some View {
         ToolScreen(
             title: "Compress",
-            subtitle: "Make photos lighter to send, upload or store. Everything happens on this phone."
+            subtitle: "Make photos lighter to send, upload or store. Everything happens on this device."
         ) {
             content
         }
