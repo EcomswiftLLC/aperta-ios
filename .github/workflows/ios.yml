@@ -129,15 +129,6 @@ jobs:
             sleep $WAIT
             xcrun simctl io "$DEST" screenshot "shots/$SCREEN.png" || true
           done
-          # iPad landscape: the debug build turns the simulator sideways after launch
-          for SCREEN in home shot-adjust shot-collage shot-passport shot-resize shot-watermark settings; do
-            xcrun simctl terminate "$DEST" com.ecomswift.aperta || true
-            xcrun simctl launch "$DEST" com.ecomswift.aperta -apScreen "$SCREEN" -apLandscape YES || true
-            case "$SCREEN" in shot-cutout|shot-passport) WAIT=34 ;; *) WAIT=18 ;; esac
-            sleep $WAIT
-            xcrun simctl io "$DEST" screenshot "shots/land-$SCREEN.png" || true
-          done
-          cat /tmp/*Landscape-error.txt 2>/dev/null || echo "no rotation error file"
           ls shots
       - uses: actions/upload-artifact@v4
         if: always()
