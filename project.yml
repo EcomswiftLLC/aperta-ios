@@ -62,6 +62,18 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Aperta.app/Aperta"
         BUNDLE_LOADER: "$(TEST_HOST)"
+  ApertaUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: Aperta
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ecomswift.aperta.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Aperta
 schemes:
   Aperta:
     build:
@@ -70,3 +82,4 @@ schemes:
     test:
       targets:
         - ApertaTests
+        - ApertaUITests
